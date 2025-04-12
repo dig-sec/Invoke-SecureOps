@@ -1,205 +1,296 @@
-# PS_Win - Windows Security Assessment and Remediation Toolkit
+# Invoke-SecureOps
 
-A comprehensive PowerShell toolkit for Windows security assessment, threat hunting, system analysis, and automated remediation.
+A comprehensive Windows security assessment and remediation toolkit for PowerShell.
+
+## Overview
+
+Invoke-SecureOps is a modular PowerShell framework designed to assess, detect, and remediate security issues on Windows systems. It provides a knowledge base of security checks that can be bundled into custom assessment scripts, with support for baseline comparison and detailed JSON reporting.
 
 ## Features
 
-### Core Security Analysis
-- System security assessment
-- Threat hunting capabilities
-- Process behavior analysis
-- Network connection monitoring
-- Wi-Fi security analysis
+- **Modular Security Assessment**: Comprehensive security checks organized by category
+- **Baseline Comparison**: Compare current system state against known good baselines
+- **Detailed JSON Reporting**: Generate detailed reports for compliance and auditing
+- **Evidence Collection**: Collect and store evidence for each security finding
+- **Custom Assessment Generation**: Create tailored assessment scripts by selecting specific tests
+- **Remediation Guidance**: Get detailed recommendations and mitigation strategies for each finding
 
-### Advanced Threat Detection
-- AMSI bypass detection
-- WMI event subscription analysis
-- Suspicious service detection
-- Unsigned driver checking
-- DLL analysis
-- Prefetch file analysis
+## Project Structure
 
-### Network Security
-- Wi-Fi profile analysis
-- Network connection monitoring
-- Suspicious connection detection
-- Port analysis
-- Service identification
-
-### System Analysis
-- Environment variable analysis
-- Scheduled task analysis
-- Log analysis
-- System configuration review
-- Security policy assessment
-
-### Automated Remediation
-- Automated fixing of security issues
-- Rollback capability for failed fixes
-- Detailed remediation reporting
-- WhatIf support for testing
-- Reboot tracking for changes
-
-### Performance Optimization
-- Parallel test execution
-- Result caching
-- Optimized file I/O
-- Resource usage monitoring
-- Execution metrics
-
-### Integration Testing
-- Comprehensive test suite
-- Dependency management
-- Test categorization
-- Detailed test reporting
-- Failure analysis
-
-## Installation
-
-1. Clone the repository:
-```powershell
-git clone https://github.com/yourusername/ps_win.git
+```
+src/
+├── modules/
+│   ├── core/           # Core functionality and base templates
+│   ├── security/       # Security assessment modules
+│   ├── system/         # System configuration modules
+│   ├── network/        # Network security modules
+│   ├── powerShell/     # PowerShell security modules
+│   ├── storage/        # Storage security modules
+│   └── mitigations/    # Mitigation strategy modules
+└── core/               # Core utilities and helpers
 ```
 
-2. Import the module:
-```powershell
-Import-Module .\ps_win
-```
+## Getting Started
 
-## Usage
-
-### Basic Security Assessment
-```powershell
-# Run all security tests
-Test-SecurityIntegration -RunAllTests -Verbose
-
-# Run specific test categories
-Test-SecurityIntegration -TestCategories @("PowerShell", "Defender", "Network")
-```
-
-### Automated Remediation
-```powershell
-# Get security findings
-$findings = Test-SecurityIntegration -RunAllTests
-
-# Review what would be fixed
-Repair-SecurityIssues -Findings $findings -WhatIf
-
-# Automatically fix issues
-Repair-SecurityIssues -Findings $findings -AutoFix
-```
-
-### Performance Optimization
-```powershell
-# Initialize optimization settings
-$settings = Initialize-OptimizationSettings -MaxParallelJobs 4 -CacheResults
-
-# Run tests with optimization
-Start-ParallelSecurityTests -Tests $tests -Settings $settings
-
-# Clear test cache
-Clear-TestCache -CachePath ".\cache" -Force
-```
-
-### Individual Security Checks
-```powershell
-# PowerShell Security
-Test-PowerShellSecurity -Verbose
-
-# Windows Defender
-Test-DefenderStatus -Verbose
-
-# Network Security
-Test-NetworkSecurityProtocols -Verbose
-Test-FirewallStatus -Verbose
-
-# Credential Protection
-Test-CredentialProtection -Verbose
-```
-
-## Configuration
-
-The module can be configured using the following functions:
-
-```powershell
-# Get current configuration
-Get-Config
-
-# Set configuration value
-Set-Config -Section 'Security' -Key 'SeverityLevel' -Value 'High'
-
-# Save configuration
-Save-Config
-
-# Load configuration
-Load-Config
-
-# Reset to defaults
-Reset-Config
-```
-
-## Logging
-
-Logging can be configured using:
-
-```powershell
-# Set log level
-Set-LogLevel -Level 'Info'
-
-# Set log file
-Set-LogFile -Path '.\logs\ps_win.log'
-
-# Enable/disable logging
-Enable-Logging -Console
-Enable-Logging -File
-Disable-Logging -Console
-Disable-Logging -File
-```
-
-## Performance Tuning
-
-Optimize performance using:
-
-```powershell
-# Set parallel execution
-Set-ParallelExecution -MaxJobs 4
-
-# Enable result caching
-Enable-ResultCaching -CachePath ".\cache" -ExpirationHours 24
-
-# Optimize file operations
-Optimize-FileOperations -BufferSize 64KB -Compress
-```
-
-## Requirements
+### Prerequisites
 
 - Windows 10/11 or Windows Server 2016/2019/2022
 - PowerShell 5.1 or higher
-- Administrative privileges for full functionality
+- Administrative privileges
+
+### Installation
+
+1. Clone the repository:
+   ```powershell
+   git clone https://github.com/yourusername/Invoke-SecureOps.git
+   cd Invoke-SecureOps
+   ```
+
+2. Import the module:
+   ```powershell
+   Import-Module .\Invoke-SecureOps.psm1
+   ```
+
+## Usage
+
+### Running a Security Assessment
+
+```powershell
+# Run a complete security assessment
+Invoke-SecurityOperations -OutputPath .\security_report.json -PrettyOutput
+
+# Run specific categories of tests
+Invoke-SecurityOperations -Categories @("PowerShellSecurity", "Defender") -OutputPath .\focused_report.json
+
+# Run specific tests
+Invoke-SecurityOperations -SpecificTests @("Test-DefenderStatus", "Test-CredentialProtection") -OutputPath .\specific_report.json
+```
+
+### Creating a Baseline
+
+```powershell
+# Create a baseline of the current system state
+Invoke-SecurityOperations -CreateBaseline -BaselinePath .\baseline.json
+```
+
+### Comparing Against Baseline
+
+```powershell
+# Compare current state against a baseline
+Invoke-SecurityOperations -IncludeBaseline -BaselinePath .\baseline.json -OutputPath .\comparison_report.json
+```
+
+### Generating Custom Assessment Scripts
+
+```powershell
+# Generate a custom assessment script
+New-SecurityAssessment -AssessmentName "CustomAssessment" -Categories @("PowerShellSecurity", "Defender") -OutputPath .\custom_assessment.ps1
+
+# Generate a script with specific tests
+New-SecurityAssessment -AssessmentName "FocusedAssessment" -SpecificTests @("Test-DefenderStatus", "Test-CredentialProtection") -OutputPath .\focused_assessment.ps1
+```
+
+### Getting Mitigation Strategies
+
+```powershell
+# Get mitigation strategies for security findings
+Get-SecurityMitigations -FindingsPath .\security_report.json -OutputPath .\mitigation_strategies.json
+```
+
+## Test Modules
+
+Each test module follows a standardized structure:
+
+1. **Initialization**: Set up test parameters and initialize the test result
+2. **Data Collection**: Gather relevant system data
+3. **Analysis**: Analyze the data for security issues
+4. **Finding Creation**: Create findings for each issue detected
+5. **Evidence Collection**: Collect evidence for each finding
+6. **Baseline Comparison**: Compare with baseline data if available
+7. **Result Export**: Export the test results to JSON
+
+### Example Test Module
+
+```powershell
+function Test-DefenderStatus {
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]$OutputPath = ".\defender_status.json",
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$IncludeBaseline,
+        
+        [Parameter()]
+        [string]$BaselinePath = ".\baseline.json",
+        
+        [Parameter()]
+        [hashtable]$CustomParameters = @{},
+        
+        [Parameter()]
+        [string]$ReportFormat = "JSON"
+    )
+
+    # Initialize test result
+    $testResult = Initialize-TestResult -TestName "Test-DefenderStatus" `
+        -Category "Windows Defender" `
+        -Description "Analyzes Windows Defender status" `
+        -Status "Info" `
+        -RiskLevel "Info" `
+        -Recommendation "Ensure Windows Defender is properly configured" `
+        -Tags @("Defender", "Antivirus", "Security") `
+        -ComplianceReference "CIS 8.1, NIST 800-53 SC-7" `
+        -MitigationStrategy "Enable Windows Defender features" `
+        -Dependencies @() `
+        -CustomData @{}
+
+    # Collect data
+    $defenderStatus = Get-MpComputerStatus
+    
+    # Store current data for baseline comparison
+    $currentData = @{
+        AntivirusEnabled = $defenderStatus.AntivirusEnabled
+        # ... more data ...
+    }
+    
+    $testResult.CurrentData = $currentData
+
+    # Load baseline data if requested
+    $baselineData = @{}
+    if ($IncludeBaseline -and (Test-Path $BaselinePath)) {
+        $baselineData = Get-Content -Path $BaselinePath | ConvertFrom-Json -AsHashtable
+        $testResult.BaselineData = $baselineData
+    }
+
+    # Check for issues
+    if (-not $currentData.AntivirusEnabled) {
+        $testResult = Add-TestFinding -TestResult $testResult `
+            -FindingName "Antivirus Disabled" `
+            -Status "Fail" `
+            -Description "Antivirus protection is disabled" `
+            -RiskLevel "Critical" `
+            -Recommendation "Enable antivirus protection" `
+            -ComplianceReference "CIS 8.1" `
+            -MitigationStrategy "Enable Windows Defender antivirus protection" `
+            -TechnicalDetails "Windows Defender antivirus is currently disabled" `
+            -CustomData @{
+                CurrentValue = $currentData.AntivirusEnabled
+                ExpectedValue = $true
+            }
+        
+        # Add evidence
+        $testResult = Add-Evidence -TestResult $testResult `
+            -FindingName "Antivirus Disabled" `
+            -EvidenceType "Configuration" `
+            -EvidenceData $currentData `
+            -Description "Windows Defender configuration showing antivirus disabled" `
+            -Metadata @{
+                Source = "Get-MpComputerStatus"
+                Timestamp = Get-Date
+            }
+    }
+
+    # ... more checks ...
+
+    # Compare with baseline if available
+    if ($IncludeBaseline -and $baselineData.Count -gt 0) {
+        $criticalFields = @("AntivirusEnabled", "RealTimeProtectionEnabled", "AntispywareEnabled")
+        
+        $fieldWeights = @{
+            "AntivirusEnabled" = 1.0
+            "RealTimeProtectionEnabled" = 1.0
+            "AntispywareEnabled" = 1.0
+            # ... more weights ...
+        }
+        
+        $comparison = Compare-BaselineData -BaselineData $baselineData `
+            -CurrentData $currentData `
+            -CriticalFields $criticalFields `
+            -FieldWeights $fieldWeights
+        
+        if ($comparison.Differences.Count -gt 0) {
+            $testResult = Add-TestFinding -TestResult $testResult `
+                -FindingName "Baseline Comparison" `
+                -Status "Warning" `
+                -Description "System state differs from baseline" `
+                -RiskLevel $(if ($comparison.CriticalChanges -gt 0) { "Critical" } elseif ($comparison.HighChanges -gt 0) { "High" } else { "Medium" }) `
+                -Recommendation "Review changes from baseline and ensure they are authorized" `
+                -ComplianceReference "NIST 800-53 CA-7" `
+                -MitigationStrategy "Review and revert unauthorized changes" `
+                -TechnicalDetails "Overall change score: $($comparison.OverallChangeScore)" `
+                -CustomData @{
+                    CriticalChanges = $comparison.CriticalChanges
+                    HighChanges = $comparison.HighChanges
+                    MediumChanges = $comparison.MediumChanges
+                    LowChanges = $comparison.LowChanges
+                    OverallChangeScore = $comparison.OverallChangeScore
+                }
+            
+            # Add evidence
+            $testResult = Add-Evidence -TestResult $testResult `
+                -FindingName "Baseline Comparison" `
+                -EvidenceType "Comparison" `
+                -EvidenceData $comparison.Differences `
+                -Description "Differences between baseline and current state" `
+                -Metadata @{
+                    BaselineTimestamp = $baselineData.Timestamp
+                    CurrentTimestamp = Get-Date
+                }
+        }
+    }
+
+    # If no findings were added, add a passing finding
+    if ($testResult.Findings.Count -eq 0) {
+        $testResult = Add-TestFinding -TestResult $testResult `
+            -FindingName "Windows Defender Status" `
+            -Status "Pass" `
+            -Description "No Windows Defender status issues found" `
+            -RiskLevel "Info" `
+            -Recommendation "Continue regular monitoring" `
+            -ComplianceReference "CIS 8.1" `
+            -MitigationStrategy "None required" `
+            -TechnicalDetails "All Windows Defender components are properly configured" `
+            -CustomData @{
+                Status = $currentData
+            }
+        
+        # Add evidence
+        $testResult = Add-Evidence -TestResult $testResult `
+            -FindingName "Windows Defender Status" `
+            -EvidenceType "Configuration" `
+            -EvidenceData $currentData `
+            -Description "Windows Defender configuration showing all components properly configured" `
+            -Metadata @{
+                Source = "Get-MpComputerStatus"
+                Timestamp = Get-Date
+            }
+    }
+
+    # Export results if path specified
+    if ($OutputPath) {
+        Export-TestResult -TestResult $testResult `
+            -OutputPath $OutputPath `
+            -PrettyOutput:$PrettyOutput `
+            -Format $ReportFormat
+        Write-Output "Results exported to: $OutputPath"
+    }
+    
+    return $testResult
+}
+```
 
 ## Contributing
 
+Contributions are welcome! Please feel free to submit a Pull Request.
+
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## Testing
-
-Run the test suite:
-
-```powershell
-# Run all tests
-Test-SecurityIntegration -RunAllTests
-
-# Run specific categories
-Test-SecurityIntegration -TestCategories @("Core", "PowerShell")
-
-# Run with performance optimization
-$settings = Initialize-OptimizationSettings -MaxParallelJobs 4 -CacheResults
-Start-ParallelSecurityTests -Tests $tests -Settings $settings
-```
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
@@ -207,33 +298,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- Contributors and maintainers
-- Security researchers and community
-- Open source projects and tools
-
-## Support
-
-For support, please:
-1. Check the documentation
-2. Search existing issues
-3. Create a new issue if needed
-
-## Security
-
-Please report security issues to security@yourcompany.com
-
-## Release Notes
-
-### Version 1.1.0
-- Added automated remediation capabilities
-- Added performance optimization through parallel processing
-- Added result caching mechanism
-- Added comprehensive integration testing
-- Improved error handling and reporting
-- Added support for dependency management
-
-### Version 1.0.0
-- Initial release
-- Basic security assessment functionality
-- Threat hunting capabilities
-- System analysis features 
+- CIS Benchmarks for Windows
+- NIST Cybersecurity Framework
+- Microsoft Security Baselines 

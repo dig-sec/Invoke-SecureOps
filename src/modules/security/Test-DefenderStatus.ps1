@@ -3,106 +3,199 @@
 # -----------------------------------------------------------------------------
 
 function Test-DefenderStatus {
+    [CmdletBinding()]
     param (
-        [string]$OutputPath = ".\defender_status.json"
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$Verbose,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators = @{}
     )
-
-    Write-SectionHeader "Windows Defender Status Analysis"
-    Write-Output "Analyzing Windows Defender status..."
-
-    # Initialize JSON output object
-    $statusInfo = @{
-        AntivirusEnabled = $null
-        RealTimeProtectionEnabled = $null
-        AntispywareEnabled = $null
-        AntivirusSignatureAge = $null
-        AntispywareSignatureAge = $null
-        NISEnabled = $null
-        NISSignatureAge = $null
-        QuickScanSignatureAge = $null
-        FullScanSignatureAge = $null
-        SecurityRisk = "Windows Defender status issues detected"
-        Recommendation = "Review and fix Windows Defender status issues"
-    }
-
-    # Get Windows Defender status
-    $defenderStatus = Get-MpComputerStatus
-
-    # Check antivirus status
-    $statusInfo.AntivirusEnabled = $defenderStatus.AntivirusEnabled
-    $statusInfo.RealTimeProtectionEnabled = $defenderStatus.RealTimeProtectionEnabled
-    $statusInfo.AntispywareEnabled = $defenderStatus.AntispywareEnabled
-
-    # Check signature ages
-    $statusInfo.AntivirusSignatureAge = $defenderStatus.AntivirusSignatureAge
-    $statusInfo.AntispywareSignatureAge = $defenderStatus.AntispywareSignatureAge
-    $statusInfo.NISEnabled = $defenderStatus.NISEnabled
-    $statusInfo.NISSignatureAge = $defenderStatus.NISSignatureAge
-    $statusInfo.QuickScanSignatureAge = $defenderStatus.QuickScanSignatureAge
-    $statusInfo.FullScanSignatureAge = $defenderStatus.FullScanSignatureAge
-
-    # Analyze status
-    $issues = @()
-
-    # Check antivirus status
-    if (-not $statusInfo.AntivirusEnabled) {
-        $issues += "Antivirus protection is disabled"
-    }
-    if (-not $statusInfo.RealTimeProtectionEnabled) {
-        $issues += "Real-time protection is disabled"
-    }
-    if (-not $statusInfo.AntispywareEnabled) {
-        $issues += "Antispyware protection is disabled"
-    }
-
-    # Check signature ages
-    if ($statusInfo.AntivirusSignatureAge -gt 7) {
-        $issues += "Antivirus signatures are outdated (Age: $($statusInfo.AntivirusSignatureAge) days)"
-    }
-    if ($statusInfo.AntispywareSignatureAge -gt 7) {
-        $issues += "Antispyware signatures are outdated (Age: $($statusInfo.AntispywareSignatureAge) days)"
-    }
-    if ($statusInfo.NISEnabled -and $statusInfo.NISSignatureAge -gt 7) {
-        $issues += "NIS signatures are outdated (Age: $($statusInfo.NISSignatureAge) days)"
-    }
-    if ($statusInfo.QuickScanSignatureAge -gt 7) {
-        $issues += "Quick scan signatures are outdated (Age: $($statusInfo.QuickScanSignatureAge) days)"
-    }
-    if ($statusInfo.FullScanSignatureAge -gt 30) {
-        $issues += "Full scan signatures are outdated (Age: $($statusInfo.FullScanSignatureAge) days)"
-    }
-
-    # Output results
-    if ($issues.Count -gt 0) {
-        Write-Output "Found Windows Defender status issues:"
-        $issues | ForEach-Object {
-            Write-Output "- $_"
-        }
-
-        Add-Finding -CheckName "Windows Defender Status" -Status "Fail" `
-            -Details "Found $($issues.Count) status issues." -Category "Defender" `
-            -AdditionalInfo @{
-                Issues = $issues
-                Status = $statusInfo
-            }
-    }
-    else {
-        Write-Output "No Windows Defender status issues found."
-        Add-Finding -CheckName "Windows Defender Status" -Status "Pass" `
-            -Details "No status issues detected." -Category "Defender" `
-            -AdditionalInfo @{
-                Status = $statusInfo
-            }
-    }
-
-    # Export results to JSON if path specified
-    if ($OutputPath) {
-        $statusInfo | ConvertTo-Json -Depth 10 | Out-File -FilePath $OutputPath
-        Write-Output "Results exported to: $OutputPath"
-    }
     
-    return $statusInfo
+    # Initialize test result
+    $testResult = Initialize-TestResult -TestName "Windows Defender Status" `
+                                      -Category "Security" `
+                                      -Description "Analyzes the status of Windows Defender antivirus protection" `
+                                      -Tags @("Defender", "Antivirus", "Security") `
+                                      -ComplianceReferences @(
+                                          @{
+                                              Framework = "CIS"
+                                              Reference = "CIS 8.1"
+                                              Description = "Ensure Windows Defender antivirus is enabled and up to date"
+                                          }
+                                      )
+    
+    try {
+        # Get Windows Defender status
+        $defenderStatus = Get-MpComputerStatus -ErrorAction Stop
+        
+        # Collect baseline data if provided
+        $baselineData = $null
+        if ($BaselinePath -and (Test-Path $BaselinePath)) {
+            $baselineData = Get-Content -Path $BaselinePath -Raw | ConvertFrom-Json
+        }
+        
+        # Check antivirus protection
+        if (-not $defenderStatus.AntivirusEnabled) {
+            $finding = Add-TestFinding -TestResult $testResult `
+                                     -Title "Antivirus Protection Disabled" `
+                                     -Description "Windows Defender antivirus protection is not enabled" `
+                                     -Severity "High" `
+                                     -Recommendation "Enable Windows Defender antivirus protection" `
+                                     -Tags @("Defender", "Antivirus") `
+                                     -ComplianceReferences @(
+                                         @{
+                                             Framework = "CIS"
+                                             Reference = "CIS 8.1.1"
+                                             Description = "Ensure Windows Defender antivirus is enabled"
+                                         }
+                                     ) `
+                                     -MitigationStrategies @(
+                                         @{
+                                             Strategy = "Enable Windows Defender"
+                                             Command = "Set-MpPreference -DisableRealtimeMonitoring $false"
+                                             Description = "Enables real-time protection in Windows Defender"
+                                         }
+                                     )
+            
+            if ($CollectEvidence) {
+                Add-Evidence -Finding $finding `
+                            -Type "Configuration" `
+                            -Data $defenderStatus `
+                            -Description "Current Windows Defender configuration"
+            }
+        }
+        
+        # Check real-time protection
+        if (-not $defenderStatus.RealTimeProtectionEnabled) {
+            $finding = Add-TestFinding -TestResult $testResult `
+                                     -Title "Real-time Protection Disabled" `
+                                     -Description "Windows Defender real-time protection is not enabled" `
+                                     -Severity "High" `
+                                     -Recommendation "Enable Windows Defender real-time protection" `
+                                     -Tags @("Defender", "RealTime") `
+                                     -ComplianceReferences @(
+                                         @{
+                                             Framework = "CIS"
+                                             Reference = "CIS 8.1.2"
+                                             Description = "Ensure Windows Defender real-time protection is enabled"
+                                         }
+                                     ) `
+                                     -MitigationStrategies @(
+                                         @{
+                                             Strategy = "Enable Real-time Protection"
+                                             Command = "Set-MpPreference -DisableRealtimeMonitoring $false"
+                                             Description = "Enables real-time protection in Windows Defender"
+                                         }
+                                     )
+            
+            if ($CollectEvidence) {
+                Add-Evidence -Finding $finding `
+                            -Type "Configuration" `
+                            -Data $defenderStatus `
+                            -Description "Current Windows Defender configuration"
+            }
+        }
+        
+        # Check signature age
+        $signatureAge = (Get-Date) - $defenderStatus.AntivirusSignatureAge
+        if ($signatureAge.Days -gt 7) {
+            $finding = Add-TestFinding -TestResult $testResult `
+                                     -Title "Outdated Antivirus Signatures" `
+                                     -Description "Windows Defender antivirus signatures are $($signatureAge.Days) days old" `
+                                     -Severity "Medium" `
+                                     -Recommendation "Update Windows Defender antivirus signatures" `
+                                     -Tags @("Defender", "Signatures") `
+                                     -ComplianceReferences @(
+                                         @{
+                                             Framework = "CIS"
+                                             Reference = "CIS 8.1.3"
+                                             Description = "Ensure Windows Defender antivirus signatures are up to date"
+                                         }
+                                     ) `
+                                     -MitigationStrategies @(
+                                         @{
+                                             Strategy = "Update Signatures"
+                                             Command = "Update-MpSignature"
+                                             Description = "Updates Windows Defender antivirus signatures"
+                                         }
+                                     )
+            
+            if ($CollectEvidence) {
+                Add-Evidence -Finding $finding `
+                            -Type "Configuration" `
+                            -Data @{
+                                SignatureAge = $signatureAge.Days
+                                LastUpdate = $defenderStatus.AntivirusSignatureAge
+                            } `
+                            -Description "Windows Defender signature age information"
+            }
+        }
+        
+        # Compare with baseline if available
+        if ($baselineData) {
+            $comparison = Compare-BaselineData -BaselineData $baselineData `
+                                            -CurrentData $defenderStatus `
+                                            -CustomComparators $CustomComparators
+            
+            if ($comparison.Changes.Count -gt 0) {
+                $finding = Add-TestFinding -TestResult $testResult `
+                                         -Title "Configuration Changes Detected" `
+                                         -Description "Changes detected in Windows Defender configuration compared to baseline" `
+                                         -Severity "Medium" `
+                                         -Recommendation "Review changes and ensure they are authorized" `
+                                         -Tags @("Defender", "Baseline") `
+                                         -TechnicalDetails $comparison
+                
+                if ($CollectEvidence) {
+                    Add-Evidence -Finding $finding `
+                                -Type "BaselineComparison" `
+                                -Data $comparison `
+                                -Description "Changes detected compared to baseline"
+                }
+            }
+        }
+        
+        # Export results if output path provided
+        if ($OutputPath) {
+            Export-TestResult -TestResult $testResult `
+                            -OutputPath $OutputPath `
+                            -PrettyOutput:$PrettyOutput
+        }
+        
+        return $testResult
+    }
+    catch {
+        Write-Error "Error analyzing Windows Defender status: $_"
+        
+        $finding = Add-TestFinding -TestResult $testResult `
+                                 -Title "Analysis Error" `
+                                 -Description "Error analyzing Windows Defender status: $($_.Exception.Message)" `
+                                 -Severity "High" `
+                                 -Recommendation "Review error details and ensure proper permissions" `
+                                 -Tags @("Defender", "Error")
+        
+        if ($OutputPath) {
+            Export-TestResult -TestResult $testResult `
+                            -OutputPath $OutputPath `
+                            -PrettyOutput:$PrettyOutput
+        }
+        
+        return $testResult
+    }
 }
 
-# Export the function
+# Export function
 Export-ModuleMember -Function Test-DefenderStatus 

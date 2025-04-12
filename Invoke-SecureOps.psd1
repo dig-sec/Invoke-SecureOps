@@ -1,11 +1,11 @@
 @{
-    RootModule = 'ps_win.psm1'
-    ModuleVersion = '1.1.0'
-    GUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+    RootModule = 'Invoke-SecureOps.psm1'
+    ModuleVersion = '2.0.0'
+    GUID = 'b2c3d4e5-f6a7-8901-bcde-f12345678901'
     Author = 'Security Team'
     CompanyName = 'Your Company'
     Copyright = '(c) 2024 Your Company. All rights reserved.'
-    Description = 'Windows Security Assessment and Remediation Toolkit'
+    Description = 'Comprehensive Windows Security Assessment and Remediation Toolkit'
     PowerShellVersion = '5.1'
     
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
@@ -69,21 +69,23 @@
     
     # Aliases to export from this module
     AliasesToExport = @(
-        'tsi',  # Test-SecurityIntegration
-        'rsi'   # Repair-SecurityIssues
+        'iso',  # Invoke-SecurityOperations
+        'rsi',  # Repair-SecurityIssues
+        'gsm'   # Get-SecurityMitigations
     )
     
     # Private data to pass to the module specified in RootModule/ModuleToProcess
     PrivateData = @{
         PSData = @{
-            Tags = @('Security', 'Assessment', 'Windows', 'Remediation', 'Integration')
-            ProjectUri = 'https://github.com/yourusername/ps_win'
+            Tags = @('Security', 'Assessment', 'Windows', 'Remediation', 'Integration', 'SecureOps')
+            ProjectUri = 'https://github.com/yourusername/Invoke-SecureOps'
             ReleaseNotes = @'
-Version 1.1.0:
-- Added automated remediation capabilities
-- Added performance optimization through parallel processing
-- Added result caching mechanism
+Version 2.0.0:
+- Rebranded as Invoke-SecureOps
+- Enhanced security assessment capabilities
+- Improved remediation automation
 - Added comprehensive integration testing
+- Enhanced performance optimization
 - Improved error handling and reporting
 - Added support for dependency management
 '@
