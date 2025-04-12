@@ -3,8 +3,23 @@
 # -----------------------------------------------------------------------------
 
 function Test-OS_EOL {
-    Write-SectionHeader "Operating System End-of-Life Check"
-    Write-Output "Checking operating system version and support status..."
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]$OutputPath = ".\os_eol.json",
+        
+        [Parameter()]
+        [switch]$PrettyOutput
+    )
+
+    # Initialize test result
+    $testResult = @{
+        TestName = "Test-OS_EOL"
+        Category = "System"
+        Description = "Checks if the operating system is approaching or past end-of-life"
+        Status = "Info"
+        Findings = @()
+    }
 
     try {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem

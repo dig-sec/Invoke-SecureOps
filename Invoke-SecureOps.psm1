@@ -2,6 +2,9 @@
 # Comprehensive Windows Security Assessment and Remediation Toolkit
 # Version 2.0.0
 
+# Import helper functions
+. "$PSScriptRoot\src\modules\core\Helpers.ps1"
+
 # Import core modules
 . "$PSScriptRoot\src\modules\core\Test-Dependencies.ps1"
 . "$PSScriptRoot\src\modules\core\Test-SecurityIntegration.ps1"
@@ -10,6 +13,9 @@
 
 # Import system security modules
 . "$PSScriptRoot\src\modules\system\Test-SystemSecurity.ps1"
+. "$PSScriptRoot\src\modules\system\Test-OS_EOL.ps1"
+. "$PSScriptRoot\src\modules\system\Test-PatchManagement.ps1"
+. "$PSScriptRoot\src\modules\system\Test-TimeConfiguration.ps1"
 
 # Import security modules
 . "$PSScriptRoot\src\modules\security\Test-PowerShellSecurity.ps1"
@@ -75,7 +81,10 @@ Export-ModuleMember -Function @(
     
     # Storage Functions
     'Test-StorageEncryption',
-    'Test-DirectoryPermissions'
+    'Test-DirectoryPermissions',
+
+    # Helper Functions
+    'Write-SectionHeader'
 )
 
 # Export aliases
@@ -96,9 +105,15 @@ Export-ModuleMember -Variable @(
 )
 
 # Set up aliases
-Set-Alias -Name 'iso' -Value 'Invoke-SecurityOperations' -Scope Global
-Set-Alias -Name 'rsi' -Value 'Repair-SecurityIssues' -Scope Global
-Set-Alias -Name 'gsm' -Value 'Get-SecurityMitigations' -Scope Global
+if (-not (Get-Alias -Name 'iso' -ErrorAction SilentlyContinue)) {
+    New-Alias -Name 'iso' -Value 'Invoke-SecurityOperations' -Scope Global
+}
+if (-not (Get-Alias -Name 'rsi' -ErrorAction SilentlyContinue)) {
+    New-Alias -Name 'rsi' -Value 'Repair-SecurityIssues' -Scope Global
+}
+if (-not (Get-Alias -Name 'gsm' -ErrorAction SilentlyContinue)) {
+    New-Alias -Name 'gsm' -Value 'Get-SecurityMitigations' -Scope Global
+}
 
 # Module initialization message
 Write-Host "Invoke-SecureOps Module v$ModuleVersion loaded successfully."
