@@ -1,0 +1,58 @@
+{
+    "Security": {
+        "description": "Security-related tests including authentication, UAC, and security controls",
+        "tests": [
+            "Test-AuthenticationControls",
+            "Test-UACStatus",
+            "Test-SuspiciousRegistry",
+            "Test-SuspiciousConnections",
+            "Test-SuspiciousFiles",
+            "Test-AMSIBypass"
+        ],
+        "priority": "High",
+        "dependencies": ["System"]
+    },
+    "System": {
+        "description": "System configuration and health tests",
+        "tests": [
+            "Test-SystemServices",
+            "Test-Dependencies",
+            "Test-PatchStatus",
+            "Test-ProcessConnections",
+            "Test-StartupItems",
+            "Test-SystemProcesses"
+        ],
+        "priority": "Medium",
+        "dependencies": []
+    },
+    "Network": {
+        "description": "Network security and configuration tests",
+        "tests": [
+            "Test-NetworkConfiguration",
+            "Test-FirewallStatus",
+            "Test-NetworkSecurity"
+        ],
+        "priority": "High",
+        "dependencies": ["System"]
+    },
+    "PowerShell": {
+        "description": "PowerShell security and configuration tests",
+        "tests": [
+            "Test-PowerShellSecurity",
+            "Test-PowerShellExecutionPolicy",
+            "Test-PowerShellLogging"
+        ],
+        "priority": "Medium",
+        "dependencies": ["System"]
+    },
+    "Storage": {
+        "description": "Storage security and configuration tests",
+        "tests": [
+            "Test-BitLockerStatus",
+            "Test-StorageEncryption",
+            "Test-FilePermissions"
+        ],
+        "priority": "Medium",
+        "dependencies": ["System"]
+    }
+} 

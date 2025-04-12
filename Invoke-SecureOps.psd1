@@ -1,11 +1,11 @@
 @{
     RootModule = 'Invoke-SecureOps.psm1'
     ModuleVersion = '2.0.0'
-    GUID = 'b2c3d4e5-f6a7-8901-bcde-f12345678901'
+    GUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
     Author = 'Security Team'
-    CompanyName = 'Your Company'
-    Copyright = '(c) 2024 Your Company. All rights reserved.'
-    Description = 'Comprehensive Windows Security Assessment and Remediation Toolkit'
+    CompanyName = 'Security Team'
+    Copyright = '(c) 2025 Security Team. All rights reserved.'
+    Description = 'Windows security assessment and remediation toolkit'
     PowerShellVersion = '5.1'
     
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
@@ -27,38 +27,8 @@
     
     # Functions to export from this module
     FunctionsToExport = @(
-        # Core Functions
-        'Test-Dependencies',
-        'Test-SecurityIntegration',
-        'Initialize-OptimizationSettings',
-        'Start-ParallelSecurityTests',
-        'Clear-TestCache',
-        'Optimize-FileOperations',
-        'Repair-SecurityIssues',
-        
-        # System Security Functions
-        'Test-SystemSecurity',
-        'Test-OS_EOL',
-        'Test-PatchManagement',
-        'Test-TimeConfiguration',
-        
-        # Security Functions
-        'Test-PowerShellSecurity',
-        'Test-DefenderStatus',
-        'Test-CredentialProtection',
-        'Test-SuspiciousProcesses',
-        'Test-AuthenticationControls',
-        'Test-PowerShellLogging',
-        
-        # Network Functions
-        'Test-FirewallStatus',
-        'Test-NetworkSecurityProtocols',
-        'Test-NetworkConfiguration',
-        'Test-AdvancedNetworkSecurity',
-        
-        # Storage Functions
-        'Test-StorageEncryption',
-        'Test-DirectoryPermissions'
+        'Test-WindowsServices',
+        'Test-Template'
     )
     
     # Cmdlets to export from this module
@@ -68,27 +38,18 @@
     VariablesToExport = '*'
     
     # Aliases to export from this module
-    AliasesToExport = @(
-        'iso',  # Invoke-SecurityOperations
-        'rsi',  # Repair-SecurityIssues
-        'gsm'   # Get-SecurityMitigations
-    )
+    AliasesToExport = @('iso')
     
     # Private data to pass to the module specified in RootModule/ModuleToProcess
     PrivateData = @{
         PSData = @{
-            Tags = @('Security', 'Assessment', 'Windows', 'Remediation', 'Integration', 'SecureOps')
+            Tags = @('Security', 'Windows', 'Assessment', 'Remediation')
             ProjectUri = 'https://github.com/yourusername/Invoke-SecureOps'
-            ReleaseNotes = @'
-Version 2.0.0:
-- Rebranded as Invoke-SecureOps
-- Enhanced security assessment capabilities
-- Improved remediation automation
-- Added comprehensive integration testing
-- Enhanced performance optimization
-- Improved error handling and reporting
-- Added support for dependency management
-'@
         }
     }
+    
+    FileList = @(
+        'tests\Test-Template.ps1',
+        'tests\Test-WindowsServices.ps1'
+    )
 } 

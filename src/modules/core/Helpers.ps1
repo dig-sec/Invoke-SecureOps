@@ -1,91 +1,98 @@
+# -----------------------------------------------------------------------------
+# Helper Functions
+# -----------------------------------------------------------------------------
+
 function Write-SectionHeader {
     param(
-        [string]$Title,
-        [string]$Subtitle = ""
+        [string]$Title
     )
-    
-    Write-Host "`n# -----------------------------------------------------------------------------"
-    Write-Host "# $Title"
-    if ($Subtitle) {
-        Write-Host "# $Subtitle"
-    }
-    Write-Host "# -----------------------------------------------------------------------------`n"
+    Write-Output "`n=== $Title ===`n"
 }
 
 function Initialize-JsonOutput {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Category,
-        
-        [Parameter(Mandatory = $false)]
-        [string]$RiskLevel = "Medium",
-        
-        [Parameter(Mandatory = $false)]
+    param(
+        [string]$Category = "General",
+        [string]$RiskLevel = "Info",
         [string]$ActionLevel = "Review"
     )
-
+    
     return @{
         Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         Category = $Category
         RiskLevel = $RiskLevel
         ActionLevel = $ActionLevel
-        Findings = @()
         Status = "Pass"
-        Details = ""
+        Description = ""
+        Findings = @()
+        Details = @{}
     }
 }
 
 function Add-Finding {
-    param (
-        [Parameter(Mandatory = $true)]
+    param(
+        [Parameter(Mandatory=$true)]
         [hashtable]$TestResult,
         
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory=$true)]
         [string]$FindingName,
         
-        [Parameter(Mandatory = $true)]
-        [string]$Status,
-        
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory=$true)]
         [string]$Description,
         
-        [Parameter(Mandatory = $false)]
-        [string]$RiskLevel = "Medium",
+        [Parameter(Mandatory=$true)]
+        [ValidateSet("Pass", "Warning", "Critical", "Error")]
+        [string]$Status,
         
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory=$true)]
+        [ValidateSet("Info", "Low", "Medium", "High", "Critical")]
+        [string]$RiskLevel,
+        
+        [Parameter()]
         [hashtable]$AdditionalInfo = @{}
     )
-
+    
     $finding = @{
         Name = $FindingName
-        Status = $Status
         Description = $Description
+        Status = $Status
         RiskLevel = $RiskLevel
-        Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         AdditionalInfo = $AdditionalInfo
+        Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     }
-
+    
     $TestResult.Findings += $finding
     
-    # Update overall test status based on finding
-    if ($Status -eq "Fail" -or $Status -eq "Critical") {
-        $TestResult.Status = "Fail"
-    } elseif ($Status -eq "Warning" -and $TestResult.Status -ne "Fail") {
-        $TestResult.Status = "Warning"
+    # Update overall test status based on finding status
+    switch ($Status) {
+        "Critical" { 
+            $TestResult.Status = "Critical"
+            $TestResult.RiskLevel = "Critical"
+        }
+        "Warning" {
+            if ($TestResult.Status -ne "Critical") {
+                $TestResult.Status = "Warning"
+                if ($TestResult.RiskLevel -notin @("Critical", "High")) {
+                    $TestResult.RiskLevel = "Medium"
+                }
+            }
+        }
+        "Error" {
+            if ($TestResult.Status -notin @("Critical", "Warning")) {
+                $TestResult.Status = "Error"
+                if ($TestResult.RiskLevel -notin @("Critical", "High", "Medium")) {
+                    $TestResult.RiskLevel = "High"
+                }
+            }
+        }
     }
-
-    return $TestResult
 }
 
 function Write-ErrorInfo {
-    param (
-        [Parameter(Mandatory = $true)]
+    param(
         [System.Management.Automation.ErrorRecord]$ErrorRecord,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$Context
+        [string]$Context = "Unknown"
     )
-
+    
     return @{
         Context = $Context
         ErrorMessage = $ErrorRecord.Exception.Message
@@ -93,9 +100,73 @@ function Write-ErrorInfo {
         ScriptStackTrace = $ErrorRecord.ScriptStackTrace
         ErrorCategory = $ErrorRecord.CategoryInfo.Category
         ErrorDetails = $ErrorRecord.ErrorDetails
-        TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     }
 }
 
-# Export all functions
-Export-ModuleMember -Function Write-SectionHeader, Initialize-JsonOutput, Add-Finding, Write-ErrorInfo 
+function Add-Evidence {
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$TestResult,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$FindingName,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$EvidenceType,
+        
+        [Parameter(Mandatory=$true)]
+        [object]$EvidenceData,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$Description
+    )
+    
+    if (-not $TestResult.Evidence) {
+        $TestResult.Evidence = @()
+    }
+    
+    $evidence = @{
+        FindingName = $FindingName
+        Type = $EvidenceType
+        Data = $EvidenceData
+        Description = $Description
+        Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    }
+    
+    $TestResult.Evidence += $evidence
+}
+
+function Export-TestResult {
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$TestResult,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput
+    )
+    
+    # Create directory if it doesn't exist
+    $directory = Split-Path -Path $OutputPath -Parent
+    if (-not (Test-Path -Path $directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+    
+    # Convert to JSON
+    if ($PrettyOutput) {
+        $json = $TestResult | ConvertTo-Json -Depth 10
+    } else {
+        $json = $TestResult | ConvertTo-Json -Depth 10 -Compress
+    }
+    
+    # Write to file
+    $json | Out-File -FilePath $OutputPath -Encoding UTF8 -Force
+    Write-Output "Test result exported to $OutputPath"
+}
+
+# Only export if we're in a module context
+if ($MyInvocation.ScriptName -ne '') {
+    Export-ModuleMember -Function Write-SectionHeader, Initialize-JsonOutput, Add-Finding, Write-ErrorInfo, Add-Evidence, Export-TestResult
+} 

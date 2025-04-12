@@ -18,6 +18,7 @@ Invoke-SecureOps is a modular PowerShell framework designed to assess, detect, a
 - **Evidence Collection**: Collect and store evidence for each security finding
 - **Custom Assessment Generation**: Create tailored assessment scripts by selecting specific tests
 - **Remediation Guidance**: Get detailed recommendations and mitigation strategies for each finding
+- **Automated Testing Framework**: Run individual or grouped tests with standardized output
 
 ## Project Structure
 
@@ -31,6 +32,10 @@ src/
 │   ├── powerShell/     # PowerShell security modules
 │   ├── storage/        # Storage security modules
 │   └── mitigations/    # Mitigation strategy modules
+├── tests/              # Test modules and runner
+│   ├── Test-*.ps1      # Individual test modules
+│   ├── Run-Tests.ps1   # Test runner script
+│   └── SecureOpsTests.psm1  # Test module manifest
 └── core/               # Core utilities and helpers
 ```
 
@@ -52,7 +57,7 @@ src/
 
 2. Import the module:
    ```powershell
-   Import-Module .\Invoke-SecureOps.psm1
+   Import-Module .\src\modules\SecureOps.psm1
    ```
 
 ### Quick Start Guide
@@ -63,44 +68,57 @@ src/
    $PSVersionTable.PSVersion
 
    # Import the module
-   Import-Module .\Invoke-SecureOps.psm1
+   Import-Module .\src\modules\SecureOps.psm1
 
    # Verify module is loaded
-   Get-Module Invoke-SecureOps
+   Get-Module SecureOps
    ```
 
-2. **Basic Security Assessment**:
+2. **Running Security Tests**:
    ```powershell
-   # Run a complete security assessment
-   .\Invoke-SecureOps.ps1 -RunAll -OutputPath .\security_report.json -PrettyOutput
+   # Run specific tests
+   .\src\tests\Run-Tests.ps1 -TestNames "Test-NetworkConfiguration", "Test-UACStatus" -OutputPath .\results -PrettyOutput
 
-   # Run focused checks on critical areas
-   .\Invoke-SecureOps.ps1 -Categories @("PowerShellSecurity", "Defender", "CredentialProtection") -OutputPath .\focused_report.json
+   # Run all tests
+   .\src\tests\Run-Tests.ps1 -All -OutputPath .\results -PrettyOutput
    ```
 
-3. **Understanding Results**:
-   - After each run, a summary is displayed showing:
-     - Total Tests Run
-     - Passed Tests
-     - Failed Tests
-     - Critical Issues
-     - Duration
-   - Detailed results are saved in the specified JSON file
-   - Review the JSON file for:
-     - Test results
-     - Findings
-     - Risk levels
-     - Evidence
-     - Recommendations
+3. **Understanding Test Results**:
+   - Each test generates a JSON report containing:
+     - Test name and category
+     - Overall status and risk level
+     - Detailed findings with:
+       - Status (Pass/Warning/Critical/Error)
+       - Risk level (Info/Low/Medium/High/Critical)
+       - Description and recommendations
+       - Additional information and evidence
+   - Results are saved in the specified output directory
+   - Test run summary shows:
+     - Total tests executed
+     - Number of successful tests
+     - Number of failed tests
 
-4. **Best Practices**:
+4. **Available Tests**:
+   - Security Tests:
+     - `Test-NetworkConfiguration`: Analyzes network settings and security
+     - `Test-UACStatus`: Checks User Account Control configuration
+     - `Test-AuthenticationControls`: Verifies authentication settings
+     - `Test-FirewallStatus`: Assesses Windows Firewall configuration
+   - System Tests:
+     - `Test-SystemServices`: Analyzes Windows services configuration
+     - `Test-Dependencies`: Checks system dependencies and versions
+   - More tests are available in the `src/tests` directory
+
+5. **Best Practices**:
    - Run full assessments monthly
    - Run focused checks weekly
    - Keep historical reports for comparison
    - Address critical issues immediately
-   - Document any manual fixes applied
+   - Review test results in the JSON format for detailed analysis
+   - Use the `-PrettyOutput` switch for human-readable JSON
+   - Specify output paths to organize test results
 
-5. **Common Use Cases**:
+6. **Common Use Cases**:
    ```powershell
    # Initial baseline assessment
    .\Invoke-SecureOps.ps1 -RunAll -OutputPath .\baseline.json
@@ -115,7 +133,7 @@ src/
    .\Invoke-SecureOps.ps1 -RunAll -AutoFix -OutputPath .\fixed_report.json
    ```
 
-6. **Troubleshooting**:
+7. **Troubleshooting**:
    - Ensure you have administrative privileges
    - Check error messages in the output
    - Verify the output path is writable

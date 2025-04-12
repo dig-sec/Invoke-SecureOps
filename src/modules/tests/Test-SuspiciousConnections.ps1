@@ -61,7 +61,8 @@ function Test-SuspiciousConnections {
     )
 
     # Initialize test result
-    $result = Initialize-TestResult -TestName "Test-SuspiciousConnections" -Category "Security" -Description "Analysis of suspicious network connections and activities"
+    $result = Initialize-JsonOutput -Category "Security" -RiskLevel "Info" -ActionLevel "Review"
+    $result.Description = "Analysis of suspicious network connections and activities"
 
     try {
         # Get all established TCP connections
@@ -118,8 +119,9 @@ function Test-SuspiciousConnections {
                     }
                 }
 
-                Add-Finding -TestResult $result -FindingName "Suspicious Port: $($port.Description)" -Status "Warning" `
-                    -Description "Found $($suspiciousConnections.Count) connections on port $($port.Port) ($($port.Description))" -RiskLevel $port.RiskLevel `
+                Add-Finding -TestResult $result -FindingName "Suspicious Port Connection" `
+                    -Status "Warning" -RiskLevel "Medium" `
+                    -Description "Found $($suspiciousConnections.Count) connections on port $($port.Port) ($($port.Description))" `
                     -AdditionalInfo @{
                         Component = "NetworkConnections"
                         Port = $port.Port
@@ -128,6 +130,18 @@ function Test-SuspiciousConnections {
                         Connections = $connectionDetails
                         Recommendation = "Review these connections and verify they are authorized"
                     }
+
+                if ($CollectEvidence) {
+                    Add-Evidence -TestResult $result `
+                        -FindingName "Process Connections" `
+                        -EvidenceType "NetworkConnections" `
+                        -EvidenceData @{
+                            ProcessName = $process.ProcessName
+                            ProcessId = $process.Id
+                            Connections = $connectionDetails
+                        } `
+                        -Description "Network connections for process $($process.ProcessName)"
+                }
             }
         }
 
@@ -173,8 +187,9 @@ function Test-SuspiciousConnections {
                     }
                 }
 
-                Add-Finding -TestResult $result -FindingName "Suspicious IP Range: $($range.Description)" -Status "Warning" `
-                    -Description "Found $($suspiciousConnections.Count) connections to $($range.Description)" -RiskLevel $range.RiskLevel `
+                Add-Finding -TestResult $result -FindingName "Suspicious IP Range Connection" `
+                    -Status "Warning" -RiskLevel $range.RiskLevel `
+                    -Description "Found $($suspiciousConnections.Count) connections to $($range.Description)" `
                     -AdditionalInfo @{
                         Component = "NetworkConnections"
                         Range = $range.Range
@@ -183,6 +198,18 @@ function Test-SuspiciousConnections {
                         Connections = $connectionDetails
                         Recommendation = "Review these connections and verify they are authorized"
                     }
+
+                if ($CollectEvidence) {
+                    Add-Evidence -TestResult $result `
+                        -FindingName "Process Connections" `
+                        -EvidenceType "NetworkConnections" `
+                        -EvidenceData @{
+                            ProcessName = $process.ProcessName
+                            ProcessId = $process.Id
+                            Connections = $connectionDetails
+                        } `
+                        -Description "Network connections for process $($process.ProcessName)"
+                }
             }
         }
 
@@ -194,17 +221,78 @@ function Test-SuspiciousConnections {
                 $process = $processes | Where-Object { $_.Id -eq $processGroup.Name } | Select-Object -First 1
                 
                 if ($process) {
-                    Add-Finding -TestResult $result -FindingName "High Connection Count" -Status "Warning" `
-                        -Description "Process $($process.ProcessName) (PID: $($process.Id)) has $($processGroup.Count) active connections" -RiskLevel "Medium" `
+                    Add-Finding -TestResult $result -FindingName "High Connection Count" `
+                        -Status "Warning" -RiskLevel "Medium" `
+                        -Description "Process $($process.Name) (PID: $($process.Id)) has $($processGroup.Count) active connections" `
                         -AdditionalInfo @{
                             Component = "NetworkConnections"
-                            ProcessName = $process.ProcessName
+                            ProcessName = $process.Name
                             ProcessId = $process.Id
-                            ProcessPath = $process.Path
                             ConnectionCount = $processGroup.Count
-                            Recommendation = "Investigate why this process has so many connections"
+                            Connections = $connectionDetails
+                            Recommendation = "Review process network activity for potential issues"
                         }
+
+                    if ($CollectEvidence) {
+                        Add-Evidence -TestResult $result `
+                            -FindingName "Process Connections" `
+                            -EvidenceType "NetworkConnections" `
+                            -EvidenceData @{
+                                ProcessName = $process.ProcessName
+                                ProcessId = $process.Id
+                                Connections = $connectionDetails
+                            } `
+                            -Description "Network connections for process $($process.ProcessName)"
+                    }
                 }
+            }
+        }
+
+        # Check for connections to private IP ranges (potential C2)
+        $privateConnections = $connections | Where-Object { 
+            $ip = [System.Net.IPAddress]::Parse($_.RemoteAddress)
+            $ip.GetAddressBytes()[0] -eq 10 -or 
+            ($ip.GetAddressBytes()[0] -eq 172 -and $ip.GetAddressBytes()[1] -ge 16 -and $ip.GetAddressBytes()[1] -le 31) -or
+            ($ip.GetAddressBytes()[0] -eq 192 -and $ip.GetAddressBytes()[1] -eq 168)
+        }
+        
+        if ($privateConnections.Count -gt 0) {
+            $connectionDetails = $privateConnections | ForEach-Object {
+                $process = $processes | Where-Object { $_.Id -eq $_.OwningProcess } | Select-Object -First 1
+                @{
+                    LocalAddress = $_.LocalAddress
+                    LocalPort = $_.LocalPort
+                    RemoteAddress = $_.RemoteAddress
+                    RemotePort = $_.RemotePort
+                    State = $_.State
+                    ProcessId = $_.OwningProcess
+                    ProcessName = if ($process) { $process.ProcessName } else { "Unknown" }
+                    ProcessPath = if ($process) { $process.Path } else { "Unknown" }
+                }
+            }
+
+            Add-Finding -TestResult $result -FindingName "Private Network Connections" `
+                -Status "Info" -RiskLevel "Low" `
+                -Description "Process $($process.Name) (PID: $($process.Id)) has $($privateConnections.Count) connections to private IP addresses" `
+                -AdditionalInfo @{
+                    Component = "NetworkConnections"
+                    ProcessName = $process.Name
+                    ProcessId = $process.Id
+                    ConnectionCount = $privateConnections.Count
+                    Connections = $connectionDetails
+                    Recommendation = "Verify these internal network connections are authorized"
+                }
+
+            if ($CollectEvidence) {
+                Add-Evidence -TestResult $result `
+                    -FindingName "Process Connections" `
+                    -EvidenceType "NetworkConnections" `
+                    -EvidenceData @{
+                        ProcessName = $process.ProcessName
+                        ProcessId = $process.Id
+                        Connections = $connectionDetails
+                    } `
+                    -Description "Network connections for process $($process.ProcessName)"
             }
         }
 
@@ -216,8 +304,12 @@ function Test-SuspiciousConnections {
         return $result
     }
     catch {
-        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
-            -Description "Error during network connection analysis: $_" -RiskLevel "High"
+        Add-Finding -TestResult $result -FindingName "Test Error" `
+            -Status "Error" -RiskLevel "High" `
+            -Description "Error during network connection analysis: $_" `
+            -AdditionalInfo @{
+                Recommendation = "Check system permissions and network access"
+            }
         if ($OutputPath) {
             Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         }
