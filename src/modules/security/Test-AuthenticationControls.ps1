@@ -2,139 +2,213 @@
 # Authentication Controls Analysis Module
 # -----------------------------------------------------------------------------
 
+<#
+.SYNOPSIS
+    Tests for authentication controls and settings.
+
+.DESCRIPTION
+    This function analyzes the system's authentication controls, including password policies,
+    account lockout settings, and other security-related authentication configurations.
+
+.PARAMETER OutputPath
+    The path where the test results will be exported.
+
+.PARAMETER PrettyOutput
+    Switch parameter to format the output JSON with indentation.
+
+.PARAMETER DetailedAnalysis
+    Switch parameter to perform a more detailed analysis of authentication settings.
+
+.PARAMETER BaselinePath
+    Path to a baseline file for comparison.
+
+.PARAMETER CollectEvidence
+    Switch parameter to collect evidence for findings.
+
+.PARAMETER CustomComparators
+    Hashtable of custom comparison functions.
+
+.OUTPUTS
+    [hashtable] A hashtable containing test results and findings.
+
+.EXAMPLE
+    Test-AuthenticationControls -OutputPath ".\results.json" -PrettyOutput
+
+.NOTES
+    Author: Security Team
+    Version: 1.0
+#>
 function Test-AuthenticationControls {
-    param (
-        [string]$OutputPath = ".\authentication_controls.json"
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$DetailedAnalysis,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators
     )
 
-    Write-SectionHeader "Authentication Controls Check"
-    Write-Output "Analyzing authentication controls..."
-
-    # Initialize JSON output object using common function
-    $authInfo = Initialize-JsonOutput -Category "AuthenticationControls" -RiskLevel "High" -ActionLevel "Review"
+    # Initialize test result
+    $result = Initialize-TestResult -TestName "Test-AuthenticationControls" -Category "Security" `
+        -Description "Analyzes authentication controls and settings"
 
     try {
-        # Check password policy
-        $passwordPolicy = net accounts | Select-String -Pattern "Maximum password age|Minimum password length|Password history|Lockout duration|Lockout threshold"
-        
-        # Check account lockout policy
-        $lockoutPolicy = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0" -ErrorAction SilentlyContinue
-        
-        # Check NTLM settings
-        $ntlmSettings = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0" -ErrorAction SilentlyContinue
-        
-        # Parse password policy
-        $authInfo.PasswordPolicy = @{
-            MaxPasswordAge = ($passwordPolicy | Select-String "Maximum password age").ToString().Split(":")[1].Trim()
-            MinPasswordLength = ($passwordPolicy | Select-String "Minimum password length").ToString().Split(":")[1].Trim()
-            PasswordHistory = ($passwordPolicy | Select-String "Password history").ToString().Split(":")[1].Trim()
-            LockoutDuration = ($passwordPolicy | Select-String "Lockout duration").ToString().Split(":")[1].Trim()
-            LockoutThreshold = ($passwordPolicy | Select-String "Lockout threshold").ToString().Split(":")[1].Trim()
-        }
-        
-        $authInfo.AccountLockout = @{
-            LockoutDuration = $lockoutPolicy.LockoutDuration
-            LockoutThreshold = $lockoutPolicy.LockoutThreshold
-            LockoutWindow = $lockoutPolicy.LockoutWindow
-        }
-        
-        $authInfo.NTLMSettings = @{
-            RestrictSendingNTLMTraffic = $ntlmSettings.RestrictSendingNTLMTraffic
-            AuditReceivingNTLMTraffic = $ntlmSettings.AuditReceivingNTLMTraffic
-        }
+        # Check password policies
+        $passwordPolicy = net accounts
+        $maxPasswordAge = ($passwordPolicy | Select-String "Maximum password age").ToString() -replace ".*: ", ""
+        $minPasswordLength = ($passwordPolicy | Select-String "Minimum password length").ToString() -replace ".*: ", ""
+        $passwordHistory = ($passwordPolicy | Select-String "Remember").ToString() -replace ".*: ", ""
 
-        # Add findings based on password policy
-        if ([int]$authInfo.PasswordPolicy.MaxPasswordAge -gt 90) {
-            Add-Finding -CheckName "Password Age" -Status "Warning" `
-                -Details "Maximum password age exceeds 90 days" -Category "AuthenticationControls" `
+        # Check maximum password age
+        if ([int]$maxPasswordAge -gt 90) {
+            Add-Finding -TestResult $result -FindingName "Password Age" -Status "Warning" `
+                -Description "Maximum password age exceeds 90 days" -RiskLevel "Medium" `
                 -AdditionalInfo @{
-                    Component = "PasswordPolicy"
-                    CurrentValue = $authInfo.PasswordPolicy.MaxPasswordAge
+                    Component = "Password Policy"
+                    Setting = "Maximum Password Age"
+                    CurrentValue = "$maxPasswordAge days"
                     RecommendedValue = "90 days or less"
+                    Recommendation = "Reduce maximum password age to 90 days or less"
                 }
         }
         else {
-            Add-Finding -CheckName "Password Age" -Status "Pass" `
-                -Details "Maximum password age is within recommended range" -Category "AuthenticationControls" `
+            Add-Finding -TestResult $result -FindingName "Password Age" -Status "Pass" `
+                -Description "Maximum password age is within acceptable range" -RiskLevel "Low" `
                 -AdditionalInfo @{
-                    Component = "PasswordPolicy"
-                    CurrentValue = $authInfo.PasswordPolicy.MaxPasswordAge
+                    Component = "Password Policy"
+                    Setting = "Maximum Password Age"
+                    CurrentValue = "$maxPasswordAge days"
                 }
         }
 
-        if ([int]$authInfo.PasswordPolicy.MinPasswordLength -lt 8) {
-            Add-Finding -CheckName "Password Length" -Status "Warning" `
-                -Details "Minimum password length is less than 8 characters" -Category "AuthenticationControls" `
+        # Check minimum password length
+        if ([int]$minPasswordLength -lt 12) {
+            Add-Finding -TestResult $result -FindingName "Password Length" -Status "Warning" `
+                -Description "Minimum password length is less than 12 characters" -RiskLevel "Medium" `
                 -AdditionalInfo @{
-                    Component = "PasswordPolicy"
-                    CurrentValue = $authInfo.PasswordPolicy.MinPasswordLength
-                    RecommendedValue = "8 or more characters"
+                    Component = "Password Policy"
+                    Setting = "Minimum Password Length"
+                    CurrentValue = "$minPasswordLength characters"
+                    RecommendedValue = "12 characters or more"
+                    Recommendation = "Increase minimum password length to 12 characters"
                 }
         }
         else {
-            Add-Finding -CheckName "Password Length" -Status "Pass" `
-                -Details "Minimum password length meets requirements" -Category "AuthenticationControls" `
+            Add-Finding -TestResult $result -FindingName "Password Length" -Status "Pass" `
+                -Description "Minimum password length meets requirements" -RiskLevel "Low" `
                 -AdditionalInfo @{
-                    Component = "PasswordPolicy"
-                    CurrentValue = $authInfo.PasswordPolicy.MinPasswordLength
+                    Component = "Password Policy"
+                    Setting = "Minimum Password Length"
+                    CurrentValue = "$minPasswordLength characters"
                 }
         }
 
-        # Add findings based on account lockout
-        if ([int]$authInfo.AccountLockout.LockoutThreshold -eq 0) {
-            Add-Finding -CheckName "Account Lockout" -Status "Warning" `
-                -Details "Account lockout is disabled" -Category "AuthenticationControls" `
+        # Check password history
+        if ([int]$passwordHistory -lt 24) {
+            Add-Finding -TestResult $result -FindingName "Password History" -Status "Warning" `
+                -Description "Password history is less than 24 passwords" -RiskLevel "Medium" `
                 -AdditionalInfo @{
-                    Component = "AccountLockout"
-                    Status = "Disabled"
-                    LockoutThreshold = $authInfo.AccountLockout.LockoutThreshold
+                    Component = "Password Policy"
+                    Setting = "Password History"
+                    CurrentValue = "$passwordHistory passwords"
+                    RecommendedValue = "24 passwords or more"
+                    Recommendation = "Increase password history to 24 passwords"
                 }
         }
         else {
-            Add-Finding -CheckName "Account Lockout" -Status "Pass" `
-                -Details "Account lockout is enabled" -Category "AuthenticationControls" `
+            Add-Finding -TestResult $result -FindingName "Password History" -Status "Pass" `
+                -Description "Password history meets requirements" -RiskLevel "Low" `
                 -AdditionalInfo @{
-                    Component = "AccountLockout"
-                    Status = "Enabled"
-                    LockoutThreshold = $authInfo.AccountLockout.LockoutThreshold
-                    LockoutDuration = $authInfo.AccountLockout.LockoutDuration
+                    Component = "Password Policy"
+                    Setting = "Password History"
+                    CurrentValue = "$passwordHistory passwords"
                 }
         }
 
-        # Add findings based on NTLM settings
-        if ($authInfo.NTLMSettings.RestrictSendingNTLMTraffic -eq 0) {
-            Add-Finding -CheckName "NTLM Restrictions" -Status "Warning" `
-                -Details "NTLM traffic restrictions are not configured" -Category "AuthenticationControls" `
+        # Check account lockout settings
+        $lockoutThreshold = ($passwordPolicy | Select-String "Lockout threshold").ToString() -replace ".*: ", ""
+        $lockoutDuration = ($passwordPolicy | Select-String "Lockout duration").ToString() -replace ".*: ", ""
+        $lockoutWindow = ($passwordPolicy | Select-String "Lockout observation window").ToString() -replace ".*: ", ""
+
+        if ([int]$lockoutThreshold -eq 0) {
+            Add-Finding -TestResult $result -FindingName "Account Lockout" -Status "Critical" `
+                -Description "Account lockout is disabled" -RiskLevel "Critical" `
                 -AdditionalInfo @{
-                    Component = "NTLMSettings"
-                    Status = "Unrestricted"
-                    RestrictSendingNTLMTraffic = $authInfo.NTLMSettings.RestrictSendingNTLMTraffic
+                    Component = "Account Lockout"
+                    Setting = "Lockout Threshold"
+                    CurrentValue = "Disabled"
+                    RecommendedValue = "5 attempts"
+                    Recommendation = "Enable account lockout with a threshold of 5 attempts"
                 }
         }
         else {
-            Add-Finding -CheckName "NTLM Restrictions" -Status "Pass" `
-                -Details "NTLM traffic restrictions are configured" -Category "AuthenticationControls" `
+            Add-Finding -TestResult $result -FindingName "Account Lockout" -Status "Pass" `
+                -Description "Account lockout is enabled" -RiskLevel "Low" `
                 -AdditionalInfo @{
-                    Component = "NTLMSettings"
-                    Status = "Restricted"
-                    RestrictSendingNTLMTraffic = $authInfo.NTLMSettings.RestrictSendingNTLMTraffic
+                    Component = "Account Lockout"
+                    Setting = "Lockout Threshold"
+                    CurrentValue = "$lockoutThreshold attempts"
                 }
         }
+
+        # Check for password complexity requirements
+        $secpol = secedit /export /cfg "$env:TEMP\secpol.cfg" | Out-Null
+        $secpolContent = Get-Content "$env:TEMP\secpol.cfg"
+        Remove-Item "$env:TEMP\secpol.cfg" -Force
+
+        $passwordComplexity = $secpolContent | Where-Object { $_ -match "PasswordComplexity" }
+        if ($passwordComplexity -match "PasswordComplexity\s*=\s*(\d+)") {
+            $complexityEnabled = $matches[1] -eq "1"
+            if (-not $complexityEnabled) {
+                Add-Finding -TestResult $result -FindingName "Password Complexity Disabled" -Status "Critical" `
+                    -Description "Password complexity requirements are disabled" -RiskLevel "Critical" `
+                    -AdditionalInfo @{
+                        Component = "Password Policy"
+                        Setting = "Password Complexity"
+                        CurrentValue = "Disabled"
+                        RecommendedValue = "Enabled"
+                        Recommendation = "Enable password complexity requirements"
+                    }
+            }
+            else {
+                Add-Finding -TestResult $result -FindingName "Password Complexity" -Status "Pass" `
+                    -Description "Password complexity requirements are enabled" -RiskLevel "Low" `
+                    -AdditionalInfo @{
+                        Component = "Password Policy"
+                        Setting = "Password Complexity"
+                        CurrentValue = "Enabled"
+                    }
+                }
+            }
+        }
+
+        # Export results if OutputPath is specified
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+
+        return $result
     }
     catch {
-        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Authentication Controls Analysis"
-        Add-Finding -CheckName "Authentication Controls" -Status "Error" `
-            -Details "Failed to check authentication controls: $($_.Exception.Message)" -Category "AuthenticationControls" `
-            -AdditionalInfo $errorInfo
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
+            -Description "Error during authentication controls analysis: $_" -RiskLevel "High"
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+        return $result
     }
-
-    # Export results using common function
-    if ($OutputPath) {
-        Export-ToJson -Data $authInfo -FilePath $OutputPath
-        Write-Output "Results exported to: $OutputPath"
-    }
-
-    return $authInfo
 }
 
 # Export the function

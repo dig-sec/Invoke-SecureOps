@@ -1,158 +1,228 @@
 # -----------------------------------------------------------------------------
-# Suspicious Network Connection Detection Module
+# Suspicious Network Connections Analysis Module
 # -----------------------------------------------------------------------------
 
+<#
+.SYNOPSIS
+    Tests for suspicious network connections and activities.
+
+.DESCRIPTION
+    This function analyzes network connections, processes, and protocols to identify
+    suspicious activities, unauthorized connections, and potential security risks.
+
+.PARAMETER OutputPath
+    The path where the test results will be exported.
+
+.PARAMETER PrettyOutput
+    Switch parameter to format the output JSON with indentation.
+
+.PARAMETER DetailedAnalysis
+    Switch parameter to perform a more detailed analysis of network connections.
+
+.PARAMETER BaselinePath
+    Path to a baseline file for comparison.
+
+.PARAMETER CollectEvidence
+    Switch parameter to collect evidence for findings.
+
+.PARAMETER CustomComparators
+    Hashtable of custom comparison functions.
+
+.OUTPUTS
+    [hashtable] A hashtable containing test results and findings.
+
+.EXAMPLE
+    Test-SuspiciousConnections -OutputPath ".\results.json" -PrettyOutput
+
+.NOTES
+    Author: Security Team
+    Version: 1.0
+#>
 function Test-SuspiciousConnections {
-    param (
-        [string]$OutputPath = ".\suspicious_connections.json"
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$DetailedAnalysis,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators
     )
 
-    Write-SectionHeader "Suspicious Connection Analysis"
-    Write-Output "Analyzing network connections for suspicious behavior..."
-
-    # Initialize results object
-    $results = @{
-        SuspiciousActivities = @()
-        TotalChecks = 0
-        PassedChecks = 0
-        FailedChecks = 0
-        WarningChecks = 0
-    }
+    # Initialize test result
+    $result = Initialize-TestResult -TestName "Test-SuspiciousConnections" -Category "Security" -Description "Analysis of suspicious network connections and activities"
 
     try {
-        # Get all network connections
-        $connections = Get-NetTCPConnection -ErrorAction Stop
-        $results.TotalChecks = $connections.Count
-
-        # Define suspicious connection patterns
-        $suspiciousPatterns = @(
+        # Get all established TCP connections
+        $connections = Get-NetTCPConnection -State Established -ErrorAction Stop
+        
+        # Get process information for connections
+        $processes = Get-Process -Id $connections.OwningProcess -ErrorAction SilentlyContinue
+        
+        # Define suspicious ports to monitor
+        $suspiciousPorts = @(
             @{
-                Port = 4444
-                Description = "Common backdoor port"
-                RiskLevel = "Critical"
+                Port = 445
+                Description = "SMB"
+                RiskLevel = "Medium"
             },
             @{
-                Port = 666
-                Description = "Common malware port"
-                RiskLevel = "Critical"
+                Port = 135
+                Description = "RPC"
+                RiskLevel = "Medium"
             },
             @{
-                Port = 1337
-                Description = "Common backdoor port"
+                Port = 139
+                Description = "NetBIOS"
+                RiskLevel = "Medium"
+            },
+            @{
+                Port = 3389
+                Description = "RDP"
                 RiskLevel = "High"
             },
             @{
-                Port = 31337
-                Description = "Common backdoor port"
-                RiskLevel = "High"
+                Port = 22
+                Description = "SSH"
+                RiskLevel = "Medium"
             }
         )
 
-        foreach ($pattern in $suspiciousPatterns) {
-            $matches = $connections | Where-Object { $_.LocalPort -eq $pattern.Port -or $_.RemotePort -eq $pattern.Port }
-            if ($matches) {
-                foreach ($conn in $matches) {
-                    $process = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
-                    $results.SuspiciousActivities += @{
-                        Type = "SuspiciousConnection"
-                        Port = $pattern.Port
-                        Description = $pattern.Description
-                        RiskLevel = $pattern.RiskLevel
-                        LocalAddress = $conn.LocalAddress
-                        LocalPort = $conn.LocalPort
-                        RemoteAddress = $conn.RemoteAddress
-                        RemotePort = $conn.RemotePort
-                        State = $conn.State
+        # Check for connections on suspicious ports
+        foreach ($port in $suspiciousPorts) {
+            $suspiciousConnections = $connections | Where-Object { $_.LocalPort -eq $port.Port -or $_.RemotePort -eq $port.Port }
+            
+            if ($suspiciousConnections) {
+                $connectionDetails = $suspiciousConnections | ForEach-Object {
+                    $process = $processes | Where-Object { $_.Id -eq $_.OwningProcess } | Select-Object -First 1
+                    @{
+                        LocalAddress = $_.LocalAddress
+                        LocalPort = $_.LocalPort
+                        RemoteAddress = $_.RemoteAddress
+                        RemotePort = $_.RemotePort
+                        State = $_.State
+                        ProcessId = $_.OwningProcess
                         ProcessName = if ($process) { $process.ProcessName } else { "Unknown" }
-                        ProcessId = $conn.OwningProcess
-                        Protocol = $conn.Protocol
+                        ProcessPath = if ($process) { $process.Path } else { "Unknown" }
                     }
-                    $results.WarningChecks++
                 }
-            }
-            else {
-                $results.PassedChecks++
+
+                Add-Finding -TestResult $result -FindingName "Suspicious Port: $($port.Description)" -Status "Warning" `
+                    -Description "Found $($suspiciousConnections.Count) connections on port $($port.Port) ($($port.Description))" -RiskLevel $port.RiskLevel `
+                    -AdditionalInfo @{
+                        Component = "NetworkConnections"
+                        Port = $port.Port
+                        Description = $port.Description
+                        ConnectionCount = $suspiciousConnections.Count
+                        Connections = $connectionDetails
+                        Recommendation = "Review these connections and verify they are authorized"
+                    }
             }
         }
 
-        # Check for connections to known malicious IPs
-        $maliciousIPs = @(
+        # Check for connections to suspicious IP ranges
+        $suspiciousRanges = @(
             @{
-                IP = "185.147.128.0"
-                Description = "Known malicious IP range"
-                RiskLevel = "Critical"
+                Range = "10.0.0.0/8"
+                Description = "Private Network"
+                RiskLevel = "Medium"
             },
             @{
-                IP = "45.67.230.0"
-                Description = "Known malicious IP range"
-                RiskLevel = "Critical"
+                Range = "172.16.0.0/12"
+                Description = "Private Network"
+                RiskLevel = "Medium"
+            },
+            @{
+                Range = "192.168.0.0/16"
+                Description = "Private Network"
+                RiskLevel = "Medium"
             }
         )
 
-        foreach ($ip in $maliciousIPs) {
-            $matches = $connections | Where-Object { $_.RemoteAddress -like "$($ip.IP)*" }
-            if ($matches) {
-                foreach ($conn in $matches) {
-                    $process = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
-                    $results.SuspiciousActivities += @{
-                        Type = "MaliciousIPConnection"
-                        IP = $ip.IP
-                        Description = $ip.Description
-                        RiskLevel = $ip.RiskLevel
-                        LocalAddress = $conn.LocalAddress
-                        LocalPort = $conn.LocalPort
-                        RemoteAddress = $conn.RemoteAddress
-                        RemotePort = $conn.RemotePort
-                        State = $conn.State
-                        ProcessName = if ($process) { $process.ProcessName } else { "Unknown" }
-                        ProcessId = $conn.OwningProcess
-                        Protocol = $conn.Protocol
-                    }
-                    $results.WarningChecks++
-                }
+        foreach ($range in $suspiciousRanges) {
+            $suspiciousConnections = $connections | Where-Object { 
+                $ip = [System.Net.IPAddress]::Parse($_.RemoteAddress)
+                $ip.GetAddressBytes()[0] -eq 10 -or 
+                ($ip.GetAddressBytes()[0] -eq 172 -and $ip.GetAddressBytes()[1] -ge 16 -and $ip.GetAddressBytes()[1] -le 31) -or
+                ($ip.GetAddressBytes()[0] -eq 192 -and $ip.GetAddressBytes()[1] -eq 168)
             }
-            else {
-                $results.PassedChecks++
+            
+            if ($suspiciousConnections) {
+                $connectionDetails = $suspiciousConnections | ForEach-Object {
+                    $process = $processes | Where-Object { $_.Id -eq $_.OwningProcess } | Select-Object -First 1
+                    @{
+                        LocalAddress = $_.LocalAddress
+                        LocalPort = $_.LocalPort
+                        RemoteAddress = $_.RemoteAddress
+                        RemotePort = $_.RemotePort
+                        State = $_.State
+                        ProcessId = $_.OwningProcess
+                        ProcessName = if ($process) { $process.ProcessName } else { "Unknown" }
+                        ProcessPath = if ($process) { $process.Path } else { "Unknown" }
+                    }
+                }
+
+                Add-Finding -TestResult $result -FindingName "Suspicious IP Range: $($range.Description)" -Status "Warning" `
+                    -Description "Found $($suspiciousConnections.Count) connections to $($range.Description)" -RiskLevel $range.RiskLevel `
+                    -AdditionalInfo @{
+                        Component = "NetworkConnections"
+                        Range = $range.Range
+                        Description = $range.Description
+                        ConnectionCount = $suspiciousConnections.Count
+                        Connections = $connectionDetails
+                        Recommendation = "Review these connections and verify they are authorized"
+                    }
             }
         }
 
-        # Add finding based on suspicious connections
-        if ($results.SuspiciousActivities.Count -gt 0) {
-            Add-Finding -CheckName "Suspicious Connections" -Status "Warning" `
-                -Details "Found $($results.SuspiciousActivities.Count) suspicious connections" -Category "ThreatHunting" `
-                -AdditionalInfo @{
-                    SuspiciousActivities = $results.SuspiciousActivities
-                    TotalChecks = $results.TotalChecks
-                    PassedChecks = $results.PassedChecks
-                    FailedChecks = $results.FailedChecks
-                    WarningChecks = $results.WarningChecks
+        # Check for high number of connections from a single process
+        $processConnections = $connections | Group-Object -Property OwningProcess
+        
+        foreach ($processGroup in $processConnections) {
+            if ($processGroup.Count -gt 10) {
+                $process = $processes | Where-Object { $_.Id -eq $processGroup.Name } | Select-Object -First 1
+                
+                if ($process) {
+                    Add-Finding -TestResult $result -FindingName "High Connection Count" -Status "Warning" `
+                        -Description "Process $($process.ProcessName) (PID: $($process.Id)) has $($processGroup.Count) active connections" -RiskLevel "Medium" `
+                        -AdditionalInfo @{
+                            Component = "NetworkConnections"
+                            ProcessName = $process.ProcessName
+                            ProcessId = $process.Id
+                            ProcessPath = $process.Path
+                            ConnectionCount = $processGroup.Count
+                            Recommendation = "Investigate why this process has so many connections"
+                        }
                 }
+            }
         }
-        else {
-            Add-Finding -CheckName "Connection Analysis" -Status "Pass" `
-                -Details "No suspicious connections found" -Category "ThreatHunting" `
-                -AdditionalInfo @{
-                    TotalChecks = $results.TotalChecks
-                    PassedChecks = $results.PassedChecks
-                    FailedChecks = $results.FailedChecks
-                    WarningChecks = $results.WarningChecks
-                }
+
+        # Export results if OutputPath is specified
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         }
+
+        return $result
     }
     catch {
-        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Suspicious Connection Analysis"
-        Add-Finding -CheckName "Connection Analysis" -Status "Fail" `
-            -Details "Failed to analyze connections: $($_.Exception.Message)" -Category "ThreatHunting" `
-            -AdditionalInfo $errorInfo
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
+            -Description "Error during network connection analysis: $_" -RiskLevel "High"
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+        return $result
     }
-
-    # Export results using common function
-    if ($OutputPath) {
-        Export-ToJson -Data $results -FilePath $OutputPath
-        Write-Output "Results exported to: $OutputPath"
-    }
-
-    return $results
 }
 
 # Export the function

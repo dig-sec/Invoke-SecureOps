@@ -1,15 +1,54 @@
 # -----------------------------------------------------------------------------
-# UAC Status Check
+# User Account Control (UAC) Analysis Module
 # -----------------------------------------------------------------------------
 
+<#
+.SYNOPSIS
+    Tests User Account Control (UAC) configuration and status.
+
+.DESCRIPTION
+    This function analyzes UAC settings, elevation behavior, and related security
+    configurations to ensure proper security controls are in place.
+
+.PARAMETER OutputPath
+    The path where the test results will be exported.
+
+.PARAMETER PrettyOutput
+    Switch parameter to format the output JSON with indentation.
+
+.PARAMETER DetailedAnalysis
+    Switch parameter to perform a more detailed analysis of UAC settings.
+
+.PARAMETER BaselinePath
+    Path to a baseline file for comparison.
+
+.PARAMETER CollectEvidence
+    Switch parameter to collect evidence for findings.
+
+.PARAMETER CustomComparators
+    Hashtable of custom comparison functions.
+
+.OUTPUTS
+    [hashtable] A hashtable containing test results and findings.
+
+.EXAMPLE
+    Test-UACStatus -OutputPath ".\results.json" -PrettyOutput
+
+.NOTES
+    Author: Security Team
+    Version: 1.0
+#>
 function Test-UACStatus {
     [CmdletBinding()]
-    param (
+    param(
         [Parameter()]
         [string]$OutputPath,
         
         [Parameter()]
         [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$DetailedAnalysis,
         
         [Parameter()]
         [string]$BaselinePath,
@@ -18,90 +57,126 @@ function Test-UACStatus {
         [switch]$CollectEvidence,
         
         [Parameter()]
-        [hashtable]$CustomComparators = @{}
+        [hashtable]$CustomComparators
     )
 
-    Write-SectionHeader "UAC Status Check"
-    Write-Output "Analyzing User Account Control settings..."
-
     # Initialize test result
-    $testResult = Initialize-JsonOutput -Category "Security" -RiskLevel "High"
+    $result = Initialize-TestResult -TestName "Test-UACStatus" -Category "Security" -Description "Analysis of User Account Control (UAC) configuration and status"
 
     try {
+        # Get UAC settings from registry
+        $uacSettings = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -ErrorAction Stop
+
         # Check if UAC is enabled
-        $uacEnabled = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -ErrorAction Stop).EnableLUA -eq 1
-        
-        if ($uacEnabled) {
-            Add-Finding -TestResult $testResult -FindingName "UAC Enabled" -Status "Pass" -Description "User Account Control is enabled" -RiskLevel "Info"
-        } else {
-            Add-Finding -TestResult $testResult -FindingName "UAC Enabled" -Status "Fail" -Description "User Account Control is disabled" -RiskLevel "High"
+        if ($uacSettings.EnableLUA -ne 1) {
+            Add-Finding -TestResult $result -FindingName "UAC Status" -Status "Fail" `
+                -Description "User Account Control (UAC) is disabled" -RiskLevel "High" `
+                -AdditionalInfo @{
+                    Component = "UAC"
+                    Setting = "EnableLUA"
+                    CurrentValue = $uacSettings.EnableLUA
+                    ExpectedValue = 1
+                    Recommendation = "Enable User Account Control (UAC) for better security"
+                }
         }
-        
-        # Check UAC notification level
-        $notificationLevel = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -ErrorAction Stop).ConsentPromptBehaviorAdmin
-        
-        switch ($notificationLevel) {
-            0 { 
-                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Warning" -Description "UAC is set to 'Never notify'" -RiskLevel "High"
-            }
-            1 { 
-                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Pass" -Description "UAC is set to 'Notify me only when programs try to make changes to my computer'" -RiskLevel "Info"
-            }
-            2 { 
-                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Pass" -Description "UAC is set to 'Notify me only when programs try to make changes to my computer (do not dim my desktop)'" -RiskLevel "Info"
-            }
-            3 { 
-                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Info" -Description "UAC is set to 'Always notify'" -RiskLevel "Info"
-            }
-            4 { 
-                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Info" -Description "UAC is set to 'Always notify and wait for my response'" -RiskLevel "Info"
-            }
-            5 { 
-                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Info" -Description "UAC is set to 'Always notify and wait for my response (do not dim my desktop)'" -RiskLevel "Info"
-            }
-            default { 
-                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Warning" -Description "Unknown UAC notification level: $notificationLevel" -RiskLevel "Medium"
-            }
+        else {
+            Add-Finding -TestResult $result -FindingName "UAC Status" -Status "Pass" `
+                -Description "User Account Control (UAC) is enabled" -RiskLevel "Info" `
+                -AdditionalInfo @{
+                    Component = "UAC"
+                    Setting = "EnableLUA"
+                    Value = $uacSettings.EnableLUA
+                }
         }
-        
-        # Check if file and registry write failures are virtualized
-        $virtualizationEnabled = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableVirtualization" -ErrorAction Stop).EnableVirtualization -eq 1
-        
-        if ($virtualizationEnabled) {
-            Add-Finding -TestResult $testResult -FindingName "UAC Virtualization" -Status "Pass" -Description "File and registry write failures are virtualized" -RiskLevel "Info"
-        } else {
-            Add-Finding -TestResult $testResult -FindingName "UAC Virtualization" -Status "Warning" -Description "File and registry write failures are not virtualized" -RiskLevel "Medium"
+
+        # Check UAC elevation behavior
+        if ($uacSettings.EnableVirtualization -ne 1) {
+            Add-Finding -TestResult $result -FindingName "UAC Virtualization" -Status "Warning" `
+                -Description "UAC virtualization is disabled" -RiskLevel "Medium" `
+                -AdditionalInfo @{
+                    Component = "UAC"
+                    Setting = "EnableVirtualization"
+                    CurrentValue = $uacSettings.EnableVirtualization
+                    ExpectedValue = 1
+                    Recommendation = "Enable UAC virtualization for better application compatibility"
+                }
         }
-        
-        # Check if admin approval mode is enabled
-        $adminApprovalMode = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "FilterAdministratorToken" -ErrorAction Stop).FilterAdministratorToken -eq 1
-        
-        if ($adminApprovalMode) {
-            Add-Finding -TestResult $testResult -FindingName "Admin Approval Mode" -Status "Pass" -Description "Admin approval mode is enabled" -RiskLevel "Info"
-        } else {
-            Add-Finding -TestResult $testResult -FindingName "Admin Approval Mode" -Status "Warning" -Description "Admin approval mode is disabled" -RiskLevel "High"
+        else {
+            Add-Finding -TestResult $result -FindingName "UAC Virtualization" -Status "Pass" `
+                -Description "UAC virtualization is enabled" -RiskLevel "Info" `
+                -AdditionalInfo @{
+                    Component = "UAC"
+                    Setting = "EnableVirtualization"
+                    Value = $uacSettings.EnableVirtualization
+                }
         }
-        
-        # Check if UAC prompts on secure desktop
-        $secureDesktop = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "PromptOnSecureDesktop" -ErrorAction Stop).PromptOnSecureDesktop -eq 1
-        
-        if ($secureDesktop) {
-            Add-Finding -TestResult $testResult -FindingName "Secure Desktop" -Status "Pass" -Description "UAC prompts on secure desktop" -RiskLevel "Info"
-        } else {
-            Add-Finding -TestResult $testResult -FindingName "Secure Desktop" -Status "Warning" -Description "UAC prompts do not use secure desktop" -RiskLevel "Medium"
+
+        # Check UAC elevation prompt behavior
+        $promptBehavior = switch ($uacSettings.PromptOnSecureDesktop) {
+            0 { "No prompt" }
+            1 { "Prompt on secure desktop" }
+            default { "Unknown" }
         }
+
+        if ($uacSettings.PromptOnSecureDesktop -ne 1) {
+            Add-Finding -TestResult $result -FindingName "UAC Prompt Behavior" -Status "Warning" `
+                -Description "UAC elevation prompt is not configured securely" -RiskLevel "Medium" `
+                -AdditionalInfo @{
+                    Component = "UAC"
+                    Setting = "PromptOnSecureDesktop"
+                    CurrentValue = $promptBehavior
+                    ExpectedValue = "Prompt on secure desktop"
+                    Recommendation = "Configure UAC to prompt on secure desktop"
+                }
+        }
+        else {
+            Add-Finding -TestResult $result -FindingName "UAC Prompt Behavior" -Status "Pass" `
+                -Description "UAC elevation prompt is properly configured" -RiskLevel "Info" `
+                -AdditionalInfo @{
+                    Component = "UAC"
+                    Setting = "PromptOnSecureDesktop"
+                    Value = $promptBehavior
+                }
+        }
+
+        # Check for admin approval mode
+        if ($uacSettings.EnableInstallerDetection -ne 1) {
+            Add-Finding -TestResult $result -FindingName "UAC Admin Approval" -Status "Warning" `
+                -Description "UAC admin approval mode is disabled" -RiskLevel "Medium" `
+                -AdditionalInfo @{
+                    Component = "UAC"
+                    Setting = "EnableInstallerDetection"
+                    CurrentValue = $uacSettings.EnableInstallerDetection
+                    ExpectedValue = 1
+                    Recommendation = "Enable UAC admin approval mode for better security"
+                }
+        }
+        else {
+            Add-Finding -TestResult $result -FindingName "UAC Admin Approval" -Status "Pass" `
+                -Description "UAC admin approval mode is enabled" -RiskLevel "Info" `
+                -AdditionalInfo @{
+                    Component = "UAC"
+                    Setting = "EnableInstallerDetection"
+                    Value = $uacSettings.EnableInstallerDetection
+                }
+        }
+
+        # Export results if OutputPath is specified
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+
+        return $result
     }
     catch {
-        Write-Error "Error checking UAC status: $_"
-        Add-Finding -TestResult $testResult -FindingName "UAC Status" -Status "Error" -Description "Failed to check UAC status: $_" -RiskLevel "High"
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
+            -Description "Error during UAC status analysis: $_" -RiskLevel "High"
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+        return $result
     }
-    
-    # Export results if output path provided
-    if ($OutputPath) {
-        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
-    }
-    
-    return $testResult
 }
 
+# Export the function
 Export-ModuleMember -Function Test-UACStatus 

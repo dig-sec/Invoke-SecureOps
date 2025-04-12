@@ -1,163 +1,280 @@
 # -----------------------------------------------------------------------------
-# Suspicious File Detection Module
+# Suspicious Files Analysis Module
 # -----------------------------------------------------------------------------
 
+<#
+.SYNOPSIS
+    Tests for suspicious files and executables.
+
+.DESCRIPTION
+    This function analyzes the system for suspicious files, executables, and scripts
+    that may indicate malware, unauthorized software, or security risks.
+
+.PARAMETER OutputPath
+    The path where the test results will be exported.
+
+.PARAMETER PrettyOutput
+    Switch parameter to format the output JSON with indentation.
+
+.PARAMETER DetailedAnalysis
+    Switch parameter to perform a more detailed analysis of files.
+
+.PARAMETER BaselinePath
+    Path to a baseline file for comparison.
+
+.PARAMETER CollectEvidence
+    Switch parameter to collect evidence for findings.
+
+.PARAMETER CustomComparators
+    Hashtable of custom comparison functions.
+
+.OUTPUTS
+    [hashtable] A hashtable containing test results and findings.
+
+.EXAMPLE
+    Test-SuspiciousFiles -OutputPath ".\results.json" -PrettyOutput
+
+.NOTES
+    Author: Security Team
+    Version: 1.0
+#>
 function Test-SuspiciousFiles {
-    param (
-        [string]$OutputPath = ".\suspicious_files.json"
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$DetailedAnalysis,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators
     )
 
-    Write-SectionHeader "Suspicious File Analysis"
-    Write-Output "Analyzing files for suspicious patterns..."
-
-    # Initialize results object
-    $results = @{
-        SuspiciousActivities = @()
-        TotalChecks = 0
-        PassedChecks = 0
-        FailedChecks = 0
-        WarningChecks = 0
-    }
+    # Initialize test result
+    $result = Initialize-TestResult -TestName "Test-SuspiciousFiles" -Category "Security" -Description "Analysis of suspicious files and executables"
 
     try {
-        # Define suspicious file patterns
+        # Define suspicious file patterns to check
         $suspiciousPatterns = @(
             @{
-                Name = "mimikatz"
-                Description = "Credential dumping tool"
-                RiskLevel = "Critical"
-            },
-            @{
-                Name = "procdump"
-                Description = "Process dumping tool"
-                RiskLevel = "High"
-            },
-            @{
-                Name = "wireshark"
-                Description = "Network capture tool"
+                Pattern = "*.exe"
+                Description = "Executable Files"
                 RiskLevel = "Medium"
             },
             @{
-                Name = "psexec"
-                Description = "Remote execution tool"
+                Pattern = "*.dll"
+                Description = "Dynamic Link Libraries"
+                RiskLevel = "Medium"
+            },
+            @{
+                Pattern = "*.ps1"
+                Description = "PowerShell Scripts"
                 RiskLevel = "High"
             },
             @{
-                Name = "netcat"
-                Description = "Network utility tool"
+                Pattern = "*.vbs"
+                Description = "VBScript Files"
+                RiskLevel = "High"
+            },
+            @{
+                Pattern = "*.bat"
+                Description = "Batch Files"
+                RiskLevel = "Medium"
+            },
+            @{
+                Pattern = "*.cmd"
+                Description = "Command Files"
                 RiskLevel = "Medium"
             }
         )
 
-        # Search in common locations
-        $searchPaths = @(
-            "$env:ProgramFiles",
-            "$env:ProgramFiles(x86)",
-            "$env:APPDATA",
-            "$env:LOCALAPPDATA",
-            "$env:USERPROFILE\Downloads",
-            "$env:USERPROFILE\Desktop"
+        # Define suspicious file locations to check
+        $suspiciousLocations = @(
+            @{
+                Path = "$env:USERPROFILE\Downloads"
+                Description = "Downloads Folder"
+                RiskLevel = "Medium"
+            },
+            @{
+                Path = "$env:USERPROFILE\Desktop"
+                Description = "Desktop Folder"
+                RiskLevel = "Medium"
+            },
+            @{
+                Path = "$env:ProgramData"
+                Description = "Program Data Folder"
+                RiskLevel = "High"
+            },
+            @{
+                Path = "$env:APPDATA"
+                Description = "AppData Folder"
+                RiskLevel = "High"
+            },
+            @{
+                Path = "$env:LOCALAPPDATA"
+                Description = "Local AppData Folder"
+                RiskLevel = "High"
+            }
         )
 
-        foreach ($path in $searchPaths) {
-            if (Test-Path $path) {
+        # Check each suspicious location for suspicious file patterns
+        foreach ($location in $suspiciousLocations) {
+            if (Test-Path $location.Path) {
                 foreach ($pattern in $suspiciousPatterns) {
-                    $files = Get-ChildItem -Path $path -Recurse -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Name -like "*$($pattern.Name)*" }
+                    $suspiciousFiles = Get-ChildItem -Path $location.Path -Filter $pattern.Pattern -Recurse -ErrorAction SilentlyContinue
                     
-                    $results.TotalChecks++
-                    
-                    if ($files) {
-                        foreach ($file in $files) {
-                            $fileInfo = @{
-                                Type = "SuspiciousFile"
-                                Name = $file.Name
-                                Path = $file.FullName
-                                Description = $pattern.Description
-                                RiskLevel = $pattern.RiskLevel
-                                Size = $file.Length
-                                LastModified = $file.LastWriteTime
+                    if ($suspiciousFiles) {
+                        $fileDetails = $suspiciousFiles | ForEach-Object {
+                            @{
+                                Name = $_.Name
+                                FullPath = $_.FullName
+                                Size = $_.Length
+                                CreationTime = $_.CreationTime
+                                LastWriteTime = $_.LastWriteTime
+                                LastAccessTime = $_.LastAccessTime
+                                Attributes = $_.Attributes
                             }
-
-                            try {
-                                $fileInfo.Hash = (Get-FileHash -Path $file.FullName -ErrorAction Stop).Hash
-                            }
-                            catch {
-                                $fileInfo.Hash = "Unknown"
-                            }
-
-                            try {
-                                $fileInfo.Owner = (Get-Acl -Path $file.FullName -ErrorAction Stop).Owner
-                            }
-                            catch {
-                                $fileInfo.Owner = "Unknown"
-                            }
-
-                            $results.SuspiciousActivities += $fileInfo
-                            $results.WarningChecks++
                         }
-                    }
-                    else {
-                        $results.PassedChecks++
+
+                        Add-Finding -TestResult $result -FindingName "Suspicious Files: $($pattern.Description) in $($location.Description)" -Status "Warning" `
+                            -Description "Found $($suspiciousFiles.Count) $($pattern.Description) in $($location.Path)" -RiskLevel $pattern.RiskLevel `
+                            -AdditionalInfo @{
+                                Component = "Files"
+                                Location = $location.Path
+                                Description = $location.Description
+                                Pattern = $pattern.Pattern
+                                FileType = $pattern.Description
+                                FileCount = $suspiciousFiles.Count
+                                Files = $fileDetails
+                                Recommendation = "Review these files for potential security risks"
+                            }
                     }
                 }
             }
         }
 
-        # Check for recently modified files
-        $recentFiles = Get-ChildItem -Path $searchPaths -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -gt (Get-Date).AddDays(-7) }
-        
-        foreach ($file in $recentFiles) {
-            $results.SuspiciousActivities += @{
-                Type = "RecentlyModifiedFile"
-                Name = $file.Name
-                Path = $file.FullName
-                Description = "File modified in the last 7 days"
+        # Check for files with suspicious names
+        $suspiciousNames = @(
+            @{
+                Name = "password"
+                Description = "Password Files"
+                RiskLevel = "High"
+            },
+            @{
+                Name = "credential"
+                Description = "Credential Files"
+                RiskLevel = "High"
+            },
+            @{
+                Name = "backup"
+                Description = "Backup Files"
                 RiskLevel = "Medium"
-                Size = $file.Length
-                LastModified = $file.LastWriteTime
+            },
+            @{
+                Name = "temp"
+                Description = "Temporary Files"
+                RiskLevel = "Medium"
             }
-            $results.WarningChecks++
+        )
+
+        foreach ($name in $suspiciousNames) {
+            $suspiciousFiles = Get-ChildItem -Path $env:USERPROFILE -Filter "*$($name.Name)*" -Recurse -ErrorAction SilentlyContinue
+            
+            if ($suspiciousFiles) {
+                $fileDetails = $suspiciousFiles | ForEach-Object {
+                    @{
+                        Name = $_.Name
+                        FullPath = $_.FullName
+                        Size = $_.Length
+                        CreationTime = $_.CreationTime
+                        LastWriteTime = $_.LastWriteTime
+                        LastAccessTime = $_.LastAccessTime
+                        Attributes = $_.Attributes
+                    }
+                }
+
+                Add-Finding -TestResult $result -FindingName "Suspicious File Names: $($name.Description)" -Status "Warning" `
+                    -Description "Found $($suspiciousFiles.Count) files with '$($name.Name)' in the name" -RiskLevel $name.RiskLevel `
+                    -AdditionalInfo @{
+                        Component = "Files"
+                        Pattern = $name.Name
+                        Description = $name.Description
+                        FileCount = $suspiciousFiles.Count
+                        Files = $fileDetails
+                        Recommendation = "Review these files for sensitive information"
+                    }
+            }
         }
 
-        # Add finding based on suspicious files
-        if ($results.SuspiciousActivities.Count -gt 0) {
-            Add-Finding -CheckName "Suspicious Files" -Status "Warning" `
-                -Details "Found $($results.SuspiciousActivities.Count) suspicious files" -Category "ThreatHunting" `
-                -AdditionalInfo @{
-                    SuspiciousActivities = $results.SuspiciousActivities
-                    TotalChecks = $results.TotalChecks
-                    PassedChecks = $results.PassedChecks
-                    FailedChecks = $results.FailedChecks
-                    WarningChecks = $results.WarningChecks
+        # Check for files with suspicious attributes
+        $suspiciousAttributes = @(
+            @{
+                Attribute = "Hidden"
+                Description = "Hidden Files"
+                RiskLevel = "Medium"
+            },
+            @{
+                Attribute = "System"
+                Description = "System Files"
+                RiskLevel = "Medium"
+            }
+        )
+
+        foreach ($attr in $suspiciousAttributes) {
+            $suspiciousFiles = Get-ChildItem -Path $env:USERPROFILE -Recurse -ErrorAction SilentlyContinue | 
+                Where-Object { $_.Attributes -match $attr.Attribute }
+            
+            if ($suspiciousFiles) {
+                $fileDetails = $suspiciousFiles | ForEach-Object {
+                    @{
+                        Name = $_.Name
+                        FullPath = $_.FullName
+                        Size = $_.Length
+                        CreationTime = $_.CreationTime
+                        LastWriteTime = $_.LastWriteTime
+                        LastAccessTime = $_.LastAccessTime
+                        Attributes = $_.Attributes
+                    }
                 }
+
+                Add-Finding -TestResult $result -FindingName "Suspicious File Attributes: $($attr.Description)" -Status "Warning" `
+                    -Description "Found $($suspiciousFiles.Count) files with $($attr.Attribute) attribute" -RiskLevel $attr.RiskLevel `
+                    -AdditionalInfo @{
+                        Component = "Files"
+                        Attribute = $attr.Attribute
+                        Description = $attr.Description
+                        FileCount = $suspiciousFiles.Count
+                        Files = $fileDetails
+                        Recommendation = "Review these files for potential security risks"
+                    }
+            }
         }
-        else {
-            Add-Finding -CheckName "File Analysis" -Status "Pass" `
-                -Details "No suspicious files found" -Category "ThreatHunting" `
-                -AdditionalInfo @{
-                    TotalChecks = $results.TotalChecks
-                    PassedChecks = $results.PassedChecks
-                    FailedChecks = $results.FailedChecks
-                    WarningChecks = $results.WarningChecks
-                }
+
+        # Export results if OutputPath is specified
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         }
+
+        return $result
     }
     catch {
-        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Suspicious File Analysis"
-        Add-Finding -CheckName "File Analysis" -Status "Fail" `
-            -Details "Failed to analyze files: $($_.Exception.Message)" -Category "ThreatHunting" `
-            -AdditionalInfo $errorInfo
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
+            -Description "Error during file analysis: $_" -RiskLevel "High"
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+        return $result
     }
-
-    # Export results using common function
-    if ($OutputPath) {
-        Export-ToJson -Data $results -FilePath $OutputPath
-        Write-Output "Results exported to: $OutputPath"
-    }
-
-    return $results
 }
 
 # Export the function

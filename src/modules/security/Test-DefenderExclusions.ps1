@@ -2,145 +2,238 @@
 # Windows Defender Exclusions Analysis Module
 # -----------------------------------------------------------------------------
 
+<#
+.SYNOPSIS
+    Tests for Windows Defender exclusions and security settings.
+
+.DESCRIPTION
+    This function analyzes Windows Defender configuration to identify excluded paths,
+    processes, and extensions that may pose security risks.
+
+.PARAMETER OutputPath
+    The path where the test results will be exported.
+
+.PARAMETER PrettyOutput
+    Switch parameter to format the output JSON with indentation.
+
+.PARAMETER DetailedAnalysis
+    Switch parameter to perform a more detailed analysis of exclusions.
+
+.PARAMETER BaselinePath
+    Path to a baseline file for comparison.
+
+.PARAMETER CollectEvidence
+    Switch parameter to collect evidence for findings.
+
+.PARAMETER CustomComparators
+    Hashtable of custom comparison functions.
+
+.OUTPUTS
+    [hashtable] A hashtable containing test results and findings.
+
+.EXAMPLE
+    Test-DefenderExclusions -OutputPath ".\results.json" -PrettyOutput
+
+.NOTES
+    Author: Security Team
+    Version: 1.0
+#>
 function Test-DefenderExclusions {
-    param (
-        [string]$OutputPath = ".\defender_exclusions.json"
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$DetailedAnalysis,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators
     )
 
-    Write-SectionHeader "Windows Defender Exclusions Analysis"
-    Write-Output "Analyzing Windows Defender exclusions..."
+    # Initialize test result
+    $result = Initialize-TestResult -TestName "Test-DefenderExclusions" -Category "Security" -Description "Analysis of Windows Defender exclusions and security settings"
 
-    # Initialize JSON output object using common function
-    $exclusionsInfo = Initialize-JsonOutput -Category "DefenderExclusions" -RiskLevel "Medium" -ActionLevel "Review"
-    $exclusionsInfo.TotalExclusions = 0
-    $exclusionsInfo.ExclusionsByType = @{}
-
-    # Get exclusions for different categories
-    $exclusionTypes = @(
-        @{
-            Name = "Process"
-            Command = "Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess"
-            Description = "Process exclusions"
-        },
-        @{
-            Name = "Path"
-            Command = "Get-MpPreference | Select-Object -ExpandProperty ExclusionPath"
-            Description = "Path exclusions"
-        },
-        @{
-            Name = "Extension"
-            Command = "Get-MpPreference | Select-Object -ExpandProperty ExclusionExtension"
-            Description = "File extension exclusions"
-        },
-        @{
-            Name = "IP"
-            Command = "Get-MpPreference | Select-Object -ExpandProperty ExclusionIpAddress"
-            Description = "IP address exclusions"
+    try {
+        # Check if Windows Defender is available
+        if (-not (Get-Command Get-MpPreference -ErrorAction SilentlyContinue)) {
+            Add-Finding -TestResult $result -FindingName "Windows Defender Not Available" -Status "Error" `
+                -Description "Windows Defender PowerShell module is not available" -RiskLevel "High" `
+                -AdditionalInfo @{
+                    Component = "WindowsDefender"
+                    Recommendation = "Ensure Windows Defender is installed and the PowerShell module is available"
+                }
+            return $result
         }
-    )
 
-    foreach ($type in $exclusionTypes) {
-        $exclusions = Invoke-Expression $type.Command
-        $exclusionsInfo.ExclusionsByType[$type.Name] = @{
-            Count = ($exclusions | Measure-Object).Count
-            Items = $exclusions
-            Description = $type.Description
-        }
-        $exclusionsInfo.TotalExclusions += ($exclusions | Measure-Object).Count
-    }
+        # Get Windows Defender preferences
+        $defenderPrefs = Get-MpPreference -ErrorAction Stop
 
-    # Check for suspicious exclusions
-    $suspiciousExclusions = @()
-    
-    # Check for path exclusions in sensitive locations
-    $sensitivePaths = @(
-        "C:\\Windows\\System32",
-        "C:\\Windows\\SysWOW64",
-        "C:\\Program Files",
-        "C:\\Program Files (x86)"
-    )
-    
-    if ($exclusionsInfo.ExclusionsByType.ContainsKey("Path")) {
-        foreach ($path in $exclusionsInfo.ExclusionsByType["Path"].Items) {
-            foreach ($sensitivePath in $sensitivePaths) {
-                if ($path -like "$sensitivePath*") {
-                    $suspiciousExclusions += @{
-                        Type = "Path"
-                        Value = $path
-                        Reason = "Excludes sensitive system path"
-                        RiskLevel = "High"
-                    }
+        # Check for excluded paths
+        if ($defenderPrefs.ExclusionPath) {
+            $excludedPaths = $defenderPrefs.ExclusionPath | ForEach-Object {
+                @{
+                    Path = $_
+                    Type = "Path"
+                    RiskLevel = "High"
                 }
             }
+
+            Add-Finding -TestResult $result -FindingName "Excluded Paths" -Status "Warning" `
+                -Description "Found $($excludedPaths.Count) excluded paths in Windows Defender" -RiskLevel "High" `
+                -AdditionalInfo @{
+                    Component = "WindowsDefender"
+                    ExclusionType = "Path"
+                    ExclusionCount = $excludedPaths.Count
+                    Exclusions = $excludedPaths
+                    Recommendation = "Review and remove unnecessary path exclusions"
+                }
         }
-    }
-    
-    # Check for process exclusions for system processes
-    $systemProcesses = @(
-        "svchost.exe",
-        "lsass.exe",
-        "csrss.exe",
-        "winlogon.exe",
-        "services.exe",
-        "wininit.exe",
-        "smss.exe",
-        "explorer.exe"
-    )
-    
-    if ($exclusionsInfo.ExclusionsByType.ContainsKey("Process")) {
-        foreach ($process in $exclusionsInfo.ExclusionsByType["Process"].Items) {
-            if ($systemProcesses -contains $process.ToLower()) {
-                $suspiciousExclusions += @{
+
+        # Check for excluded processes
+        if ($defenderPrefs.ExclusionProcess) {
+            $excludedProcesses = $defenderPrefs.ExclusionProcess | ForEach-Object {
+                @{
+                    Process = $_
                     Type = "Process"
-                    Value = $process
-                    Reason = "Excludes system process"
                     RiskLevel = "High"
                 }
             }
+
+            Add-Finding -TestResult $result -FindingName "Excluded Processes" -Status "Warning" `
+                -Description "Found $($excludedProcesses.Count) excluded processes in Windows Defender" -RiskLevel "High" `
+                -AdditionalInfo @{
+                    Component = "WindowsDefender"
+                    ExclusionType = "Process"
+                    ExclusionCount = $excludedProcesses.Count
+                    Exclusions = $excludedProcesses
+                    Recommendation = "Review and remove unnecessary process exclusions"
+                }
         }
-    }
-    
-    # Check for extension exclusions for executable files
-    $executableExtensions = @(
-        ".exe",
-        ".dll",
-        ".bat",
-        ".cmd",
-        ".ps1",
-        ".vbs",
-        ".js"
-    )
-    
-    if ($exclusionsInfo.ExclusionsByType.ContainsKey("Extension")) {
-        foreach ($extension in $exclusionsInfo.ExclusionsByType["Extension"].Items) {
-            if ($executableExtensions -contains $extension.ToLower()) {
-                $suspiciousExclusions += @{
+
+        # Check for excluded extensions
+        if ($defenderPrefs.ExclusionExtension) {
+            $excludedExtensions = $defenderPrefs.ExclusionExtension | ForEach-Object {
+                @{
+                    Extension = $_
                     Type = "Extension"
-                    Value = $extension
-                    Reason = "Excludes executable file extension"
-                    RiskLevel = "High"
+                    RiskLevel = "Medium"
                 }
             }
+
+            Add-Finding -TestResult $result -FindingName "Excluded Extensions" -Status "Warning" `
+                -Description "Found $($excludedExtensions.Count) excluded file extensions in Windows Defender" -RiskLevel "Medium" `
+                -AdditionalInfo @{
+                    Component = "WindowsDefender"
+                    ExclusionType = "Extension"
+                    ExclusionCount = $excludedExtensions.Count
+                    Exclusions = $excludedExtensions
+                    Recommendation = "Review and remove unnecessary extension exclusions"
+                }
         }
-    }
-    
-    $exclusionsInfo.SuspiciousExclusions = $suspiciousExclusions
-    $exclusionsInfo.SuspiciousExclusionCount = $suspiciousExclusions.Count
 
-    # Export results to JSON
-    Export-ToJson -Data $exclusionsInfo -FilePath $OutputPath -Pretty
+        # Check for disabled features
+        $disabledFeatures = @()
+        
+        if (-not $defenderPrefs.DisableRealtimeMonitoring) {
+            $disabledFeatures += @{
+                Feature = "RealtimeMonitoring"
+                Status = "Enabled"
+                RiskLevel = "Low"
+            }
+        }
+        else {
+            $disabledFeatures += @{
+                Feature = "RealtimeMonitoring"
+                Status = "Disabled"
+                RiskLevel = "Critical"
+            }
+        }
 
-    # Add findings
-    Add-Finding -CheckName "Windows Defender Exclusions" -Status "Info" -Details "Found $($exclusionsInfo.TotalExclusions) total exclusions" -Category "Defender"
-    
-    if ($exclusionsInfo.SuspiciousExclusionCount -gt 0) {
-        Add-Finding -CheckName "Suspicious Windows Defender Exclusions" -Status "Warning" -Details "Found $($exclusionsInfo.SuspiciousExclusionCount) suspicious exclusions" -Category "Defender"
-    }
-    else {
-        Add-Finding -CheckName "Suspicious Windows Defender Exclusions" -Status "Pass" -Details "No suspicious exclusions found" -Category "Defender"
-    }
+        if (-not $defenderPrefs.DisableIOAVProtection) {
+            $disabledFeatures += @{
+                Feature = "IOAVProtection"
+                Status = "Enabled"
+                RiskLevel = "Low"
+            }
+        }
+        else {
+            $disabledFeatures += @{
+                Feature = "IOAVProtection"
+                Status = "Disabled"
+                RiskLevel = "Critical"
+            }
+        }
 
-    return $exclusionsInfo
+        if (-not $defenderPrefs.DisableScriptScanning) {
+            $disabledFeatures += @{
+                Feature = "ScriptScanning"
+                Status = "Enabled"
+                RiskLevel = "Low"
+            }
+        }
+        else {
+            $disabledFeatures += @{
+                Feature = "ScriptScanning"
+                Status = "Disabled"
+                RiskLevel = "Critical"
+            }
+        }
+
+        # Add finding for disabled features
+        $disabledCount = ($disabledFeatures | Where-Object { $_.Status -eq "Disabled" }).Count
+        if ($disabledCount -gt 0) {
+            Add-Finding -TestResult $result -FindingName "Disabled Features" -Status "Warning" `
+                -Description "Found $disabledCount disabled Windows Defender features" -RiskLevel "Critical" `
+                -AdditionalInfo @{
+                    Component = "WindowsDefender"
+                    FeatureCount = $disabledCount
+                    Features = $disabledFeatures
+                    Recommendation = "Enable all Windows Defender features for maximum protection"
+                }
+        }
+
+        # Check scan settings
+        $scanSettings = @{
+            ScanScheduleDay = $defenderPrefs.ScanScheduleDay
+            ScanScheduleTime = $defenderPrefs.ScanScheduleTime
+            ScanParameters = $defenderPrefs.ScanParameters
+            ScanScheduleQuickScanTime = $defenderPrefs.ScanScheduleQuickScanTime
+            ScanScheduleQuickScanDay = $defenderPrefs.ScanScheduleQuickScanDay
+        }
+
+        Add-Finding -TestResult $result -FindingName "Scan Settings" -Status "Info" `
+            -Description "Current Windows Defender scan settings" -RiskLevel "Low" `
+            -AdditionalInfo @{
+                Component = "WindowsDefender"
+                Settings = $scanSettings
+                Recommendation = "Ensure scan schedule is appropriate for your environment"
+            }
+
+        # Export results if OutputPath is specified
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+
+        return $result
+    }
+    catch {
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
+            -Description "Error during Windows Defender analysis: $_" -RiskLevel "High"
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+        return $result
+    }
 }
 
 # Export the function

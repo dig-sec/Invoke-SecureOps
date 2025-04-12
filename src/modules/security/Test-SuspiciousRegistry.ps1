@@ -1,87 +1,121 @@
 # -----------------------------------------------------------------------------
-# Suspicious Registry Detection Module
+# Suspicious Registry Analysis Module
 # -----------------------------------------------------------------------------
 
+<#
+.SYNOPSIS
+    Tests for suspicious registry entries and configurations.
+
+.DESCRIPTION
+    This function analyzes the Windows registry for suspicious entries, unauthorized
+    modifications, and potential security risks.
+
+.PARAMETER OutputPath
+    The path where the test results will be exported.
+
+.PARAMETER PrettyOutput
+    Switch parameter to format the output JSON with indentation.
+
+.PARAMETER DetailedAnalysis
+    Switch parameter to perform a more detailed analysis of registry entries.
+
+.PARAMETER BaselinePath
+    Path to a baseline file for comparison.
+
+.PARAMETER CollectEvidence
+    Switch parameter to collect evidence for findings.
+
+.PARAMETER CustomComparators
+    Hashtable of custom comparison functions.
+
+.OUTPUTS
+    [hashtable] A hashtable containing test results and findings.
+
+.EXAMPLE
+    Test-SuspiciousRegistry -OutputPath ".\results.json" -PrettyOutput
+
+.NOTES
+    Author: Security Team
+    Version: 1.0
+#>
 function Test-SuspiciousRegistry {
-    param (
+    [CmdletBinding()]
+    param(
+        [Parameter()]
         [string]$OutputPath,
+        
+        [Parameter()]
         [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$DetailedAnalysis,
+        
+        [Parameter()]
         [string]$BaselinePath,
+        
+        [Parameter()]
         [switch]$CollectEvidence,
+        
+        [Parameter()]
         [hashtable]$CustomComparators
     )
 
-    Write-SectionHeader "Suspicious Registry Analysis"
-    Write-Output "Analyzing registry for suspicious entries..."
-
     # Initialize test result
-    $testResult = Initialize-TestResult -Name "Test-SuspiciousRegistry"
-
-    # Initialize results object for internal tracking
-    $results = @{
-        SuspiciousActivities = @()
-        TotalChecks = 0
-        PassedChecks = 0
-        FailedChecks = 0
-        WarningChecks = 0
-    }
+    $result = Initialize-TestResult -TestName "Test-SuspiciousRegistry" -Category "Security" -Description "Analysis of suspicious registry entries and configurations"
 
     try {
-        # Define suspicious registry patterns
+        # Define suspicious registry patterns to check
         $suspiciousPatterns = @(
             @{
                 Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-                Description = "Startup programs"
+                Description = "Startup Programs"
                 RiskLevel = "High"
             },
             @{
                 Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
-                Description = "One-time startup programs"
-                RiskLevel = "High"
-            },
-            @{
-                Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-                Description = "User startup programs"
+                Description = "One-time Startup Programs"
                 RiskLevel = "High"
             },
             @{
                 Path = "HKLM:\SYSTEM\CurrentControlSet\Services"
-                Description = "System services"
-                RiskLevel = "Critical"
+                Description = "System Services"
+                RiskLevel = "High"
+            },
+            @{
+                Path = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+                Description = "Winlogon Configuration"
+                RiskLevel = "High"
             }
         )
 
+        # Check each suspicious pattern
         foreach ($pattern in $suspiciousPatterns) {
             if (Test-Path $pattern.Path) {
                 $entries = Get-ItemProperty -Path $pattern.Path -ErrorAction SilentlyContinue
-                $results.TotalChecks++
-
+                
                 if ($entries) {
-                    foreach ($entry in $entries.PSObject.Properties) {
-                        if ($entry.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')) {
-                            $entryInfo = @{
-                                Type = "SuspiciousRegistry"
-                                Path = $pattern.Path
-                                Name = $entry.Name
-                                Value = $entry.Value
-                                Description = $pattern.Description
-                                RiskLevel = $pattern.RiskLevel
+                    # Convert entries to a more manageable format
+                    $entryList = $entries.PSObject.Properties | 
+                        Where-Object { $_.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider') } |
+                        ForEach-Object {
+                            @{
+                                Name = $_.Name
+                                Value = $_.Value
+                                Type = $_.Type
                             }
-
-                            try {
-                                $entryInfo.LastModified = (Get-ItemProperty -Path $pattern.Path -ErrorAction Stop).PSObject.Properties['LastWriteTime'].Value
-                            }
-                            catch {
-                                $entryInfo.LastModified = "Unknown"
-                            }
-
-                            $results.SuspiciousActivities += $entryInfo
-                            $results.WarningChecks++
                         }
+
+                    if ($entryList.Count -gt 0) {
+                        Add-Finding -TestResult $result -FindingName "Suspicious Registry: $($pattern.Description)" -Status "Warning" `
+                            -Description "Found $($entryList.Count) entries in $($pattern.Path)" -RiskLevel $pattern.RiskLevel `
+                            -AdditionalInfo @{
+                                Component = "Registry"
+                                Path = $pattern.Path
+                                EntryCount = $entryList.Count
+                                Entries = $entryList
+                                Recommendation = "Review these entries for unauthorized modifications"
+                            }
                     }
-                }
-                else {
-                    $results.PassedChecks++
                 }
             }
         }
@@ -89,81 +123,65 @@ function Test-SuspiciousRegistry {
         # Check for suspicious registry values
         $suspiciousValues = @(
             @{
-                Value = "cmd.exe /c"
-                Description = "Command execution"
+                Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+                Name = "EnableLUA"
+                ExpectedValue = 1
+                Description = "User Account Control (UAC)"
                 RiskLevel = "High"
             },
             @{
-                Value = "powershell.exe -enc"
-                Description = "Encoded PowerShell command"
-                RiskLevel = "Critical"
-            },
-            @{
-                Value = "mshta.exe"
-                Description = "HTML Application execution"
+                Path = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+                Name = "RestrictAnonymous"
+                ExpectedValue = 1
+                Description = "Anonymous Access Restriction"
                 RiskLevel = "High"
             }
         )
 
         foreach ($value in $suspiciousValues) {
-            $matches = Get-ChildItem -Path "HKLM:\SOFTWARE" -Recurse -ErrorAction SilentlyContinue |
-                Get-ItemProperty | Where-Object { $_.PSObject.Properties.Value -like "*$($value.Value)*" }
-            
-            if ($matches) {
-                foreach ($match in $matches) {
-                    $results.SuspiciousActivities += @{
-                        Type = "SuspiciousRegistryValue"
-                        Path = $match.PSPath
-                        Value = $value.Value
-                        Description = $value.Description
-                        RiskLevel = $value.RiskLevel
-                    }
-                    $results.WarningChecks++
+            if (Test-Path $value.Path) {
+                $currentValue = Get-ItemProperty -Path $value.Path -Name $value.Name -ErrorAction SilentlyContinue
+                
+                if ($currentValue.$($value.Name) -ne $value.ExpectedValue) {
+                    Add-Finding -TestResult $result -FindingName "Registry Value: $($value.Description)" -Status "Fail" `
+                        -Description "$($value.Description) is not properly configured" -RiskLevel $value.RiskLevel `
+                        -AdditionalInfo @{
+                            Component = "Registry"
+                            Path = $value.Path
+                            Setting = $value.Name
+                            CurrentValue = $currentValue.$($value.Name)
+                            ExpectedValue = $value.ExpectedValue
+                            Recommendation = "Set $($value.Name) to $($value.ExpectedValue)"
+                        }
                 }
-            }
-            else {
-                $results.PassedChecks++
+                else {
+                    Add-Finding -TestResult $result -FindingName "Registry Value: $($value.Description)" -Status "Pass" `
+                        -Description "$($value.Description) is properly configured" -RiskLevel "Info" `
+                        -AdditionalInfo @{
+                            Component = "Registry"
+                            Path = $value.Path
+                            Setting = $value.Name
+                            Value = $currentValue.$($value.Name)
+                        }
+                }
             }
         }
 
-        # Add finding based on suspicious registry entries
-        if ($results.SuspiciousActivities.Count -gt 0) {
-            Add-Finding -TestResult $testResult -FindingName "Suspicious Registry" -Status "Warning" `
-                -Description "Found $($results.SuspiciousActivities.Count) suspicious registry entries" -RiskLevel "High" `
-                -AdditionalInfo @{
-                    SuspiciousActivities = $results.SuspiciousActivities
-                    TotalChecks = $results.TotalChecks
-                    PassedChecks = $results.PassedChecks
-                    FailedChecks = $results.FailedChecks
-                    WarningChecks = $results.WarningChecks
-                    Recommendation = "Review and investigate these registry entries for potential security risks"
-                }
+        # Export results if OutputPath is specified
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         }
-        else {
-            Add-Finding -TestResult $testResult -FindingName "Registry Analysis" -Status "Pass" `
-                -Description "No suspicious registry entries found" -RiskLevel "Info" `
-                -AdditionalInfo @{
-                    TotalChecks = $results.TotalChecks
-                    PassedChecks = $results.PassedChecks
-                    FailedChecks = $results.FailedChecks
-                    WarningChecks = $results.WarningChecks
-                }
-        }
+
+        return $result
     }
     catch {
-        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Suspicious Registry Analysis"
-        Add-Finding -TestResult $testResult -FindingName "Registry Analysis" -Status "Error" `
-            -Description "Failed to analyze registry: $($_.Exception.Message)" -RiskLevel "High" `
-            -AdditionalInfo $errorInfo
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
+            -Description "Error during registry analysis: $_" -RiskLevel "High"
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+        return $result
     }
-
-    # Export results using common function
-    if ($OutputPath) {
-        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
-        Write-Output "Results exported to: $OutputPath"
-    }
-
-    return $testResult
 }
 
 # Export the function
