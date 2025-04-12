@@ -2,16 +2,48 @@
 # Network Adapters and Firewall Analysis Module
 # -----------------------------------------------------------------------------
 
+<#
+.SYNOPSIS
+    Tests network adapters and firewall configuration for security compliance.
+
+.DESCRIPTION
+    This function analyzes network adapters, firewall profiles, and network connections
+    to identify potential security issues and misconfigurations.
+
+.PARAMETER OutputPath
+    The path where the test results will be exported.
+
+.PARAMETER PrettyOutput
+    Switch parameter to format the output JSON with indentation.
+
+.PARAMETER DetailedAnalysis
+    Switch parameter to perform a more detailed analysis of network connections.
+
+.OUTPUTS
+    [hashtable] A hashtable containing test results and findings.
+
+.EXAMPLE
+    Test-NetworkAdaptersAndFirewall -OutputPath ".\results.json" -PrettyOutput
+
+.NOTES
+    Author: Security Team
+    Version: 1.0
+#>
 function Test-NetworkAdaptersAndFirewall {
-    param (
-        [string]$OutputPath = ".\network_adapters_firewall.json"
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [switch]$DetailedAnalysis
     )
 
-    Write-SectionHeader "Network Adapters and Firewall Check"
-    Write-Output "Analyzing network adapters and firewall configuration..."
-
-    # Initialize JSON output object using common function
-    $networkInfo = Initialize-JsonOutput -Category "NetworkAdaptersAndFirewall" -RiskLevel "High" -ActionLevel "Review"
+    # Initialize test result
+    $result = Initialize-TestResult -TestName "Test-NetworkAdaptersAndFirewall" -Category "Network" -Description "Analysis of network adapters and firewall configuration"
 
     try {
         # Get network adapters
@@ -22,38 +54,11 @@ function Test-NetworkAdaptersAndFirewall {
         
         # Get network connections
         $connections = Get-NetTCPConnection | Where-Object { $_.State -eq "Established" }
-        
-        $networkInfo.Adapters = $adapters | ForEach-Object {
-            @{
-                Name = $_.Name
-                InterfaceDescription = $_.InterfaceDescription
-                MacAddress = $_.MacAddress
-                LinkSpeed = $_.LinkSpeed
-                Status = $_.Status
-                MediaType = $_.MediaType
-            }
-        }
-        $networkInfo.Firewall = @{
-            Domain = $firewall | Where-Object { $_.Name -eq "Domain" } | Select-Object Enabled,DefaultInboundAction,DefaultOutboundAction
-            Private = $firewall | Where-Object { $_.Name -eq "Private" } | Select-Object Enabled,DefaultInboundAction,DefaultOutboundAction
-            Public = $firewall | Where-Object { $_.Name -eq "Public" } | Select-Object Enabled,DefaultInboundAction,DefaultOutboundAction
-        }
-        $networkInfo.Connections = $connections | ForEach-Object {
-            @{
-                LocalAddress = $_.LocalAddress
-                LocalPort = $_.LocalPort
-                RemoteAddress = $_.RemoteAddress
-                RemotePort = $_.RemotePort
-                State = $_.State
-                OwningProcess = $_.OwningProcess
-                Protocol = $_.Protocol
-            }
-        }
 
-        # Add findings based on network adapters
+        # Check network adapters
         if ($adapters.Count -eq 0) {
-            Add-Finding -CheckName "Network Adapters" -Status "Warning" `
-                -Details "No active network adapters found" -Category "NetworkAdaptersAndFirewall" `
+            Add-Finding -TestResult $result -FindingName "Network Adapters" -Status "Warning" `
+                -Description "No active network adapters found" -RiskLevel "Medium" `
                 -AdditionalInfo @{
                     Component = "NetworkAdapters"
                     Status = "No Active Adapters"
@@ -61,19 +66,29 @@ function Test-NetworkAdaptersAndFirewall {
                 }
         }
         else {
-            Add-Finding -CheckName "Network Adapters" -Status "Pass" `
-                -Details "Found $($adapters.Count) active network adapters" -Category "NetworkAdaptersAndFirewall" `
+            Add-Finding -TestResult $result -FindingName "Network Adapters" -Status "Pass" `
+                -Description "Found $($adapters.Count) active network adapters" -RiskLevel "Info" `
                 -AdditionalInfo @{
                     Component = "NetworkAdapters"
                     Count = $adapters.Count
+                    Adapters = $adapters | ForEach-Object {
+                        @{
+                            Name = $_.Name
+                            InterfaceDescription = $_.InterfaceDescription
+                            MacAddress = $_.MacAddress
+                            LinkSpeed = $_.LinkSpeed
+                            Status = $_.Status
+                            MediaType = $_.MediaType
+                        }
+                    }
                 }
         }
 
-        # Add findings based on firewall configuration
+        # Check firewall configuration
         foreach ($profile in $firewall) {
             if (-not $profile.Enabled) {
-                Add-Finding -CheckName "Windows Firewall: $($profile.Name)" -Status "Fail" `
-                    -Details "Firewall is disabled for $($profile.Name) profile" -Category "NetworkAdaptersAndFirewall" `
+                Add-Finding -TestResult $result -FindingName "Windows Firewall: $($profile.Name)" -Status "Fail" `
+                    -Description "Firewall is disabled for $($profile.Name) profile" -RiskLevel "High" `
                     -AdditionalInfo @{
                         Component = "Firewall"
                         Profile = $profile.Name
@@ -82,8 +97,8 @@ function Test-NetworkAdaptersAndFirewall {
                     }
             }
             elseif ($profile.DefaultInboundAction -eq "Allow") {
-                Add-Finding -CheckName "Windows Firewall: $($profile.Name)" -Status "Warning" `
-                    -Details "Default inbound action is set to Allow for $($profile.Name) profile" -Category "NetworkAdaptersAndFirewall" `
+                Add-Finding -TestResult $result -FindingName "Windows Firewall: $($profile.Name)" -Status "Warning" `
+                    -Description "Default inbound action is set to Allow for $($profile.Name) profile" -RiskLevel "Medium" `
                     -AdditionalInfo @{
                         Component = "Firewall"
                         Profile = $profile.Name
@@ -93,15 +108,14 @@ function Test-NetworkAdaptersAndFirewall {
                     }
             }
             else {
-                Add-Finding -CheckName "Windows Firewall: $($profile.Name)" -Status "Pass" `
-                    -Details "Firewall is properly configured for $($profile.Name) profile" -Category "NetworkAdaptersAndFirewall" `
+                Add-Finding -TestResult $result -FindingName "Windows Firewall: $($profile.Name)" -Status "Pass" `
+                    -Description "Firewall is properly configured for $($profile.Name) profile" -RiskLevel "Info" `
                     -AdditionalInfo @{
                         Component = "Firewall"
                         Profile = $profile.Name
                         Status = "Enabled"
                         DefaultInboundAction = $profile.DefaultInboundAction
                     }
-                }
             }
         }
 
@@ -122,8 +136,8 @@ function Test-NetworkAdaptersAndFirewall {
         }
 
         if ($suspiciousConnections.Count -gt 0) {
-            Add-Finding -CheckName "Suspicious Connections" -Status "Warning" `
-                -Details "Found $($suspiciousConnections.Count) suspicious connections" -Category "NetworkAdaptersAndFirewall" `
+            Add-Finding -TestResult $result -FindingName "Suspicious Connections" -Status "Warning" `
+                -Description "Found $($suspiciousConnections.Count) suspicious connections" -RiskLevel "Medium" `
                 -AdditionalInfo @{
                     Component = "NetworkConnections"
                     Count = $suspiciousConnections.Count
@@ -132,30 +146,29 @@ function Test-NetworkAdaptersAndFirewall {
                 }
         }
         else {
-            Add-Finding -CheckName "Suspicious Connections" -Status "Pass" `
-                -Details "No suspicious connections found" -Category "NetworkAdaptersAndFirewall" `
+            Add-Finding -TestResult $result -FindingName "Suspicious Connections" -Status "Pass" `
+                -Description "No suspicious connections found" -RiskLevel "Info" `
                 -AdditionalInfo @{
                     Component = "NetworkConnections"
                     Status = "No Suspicious Connections"
                 }
         }
 
-        $networkInfo.SuspiciousConnections = $suspiciousConnections
+        # Export results if OutputPath is specified
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+
+        return $result
     }
     catch {
-        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Network Adapters and Firewall Analysis"
-        Add-Finding -CheckName "Network Adapters and Firewall" -Status "Error" `
-            -Details "Failed to check network adapters and firewall: $($_.Exception.Message)" -Category "NetworkAdaptersAndFirewall" `
-            -AdditionalInfo $errorInfo
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
+            -Description "Error during network adapters and firewall analysis: $_" -RiskLevel "High"
+        if ($OutputPath) {
+            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        }
+        return $result
     }
-
-    # Export results using common function
-    if ($OutputPath) {
-        Export-ToJson -Data $networkInfo -FilePath $OutputPath
-        Write-Output "Results exported to: $OutputPath"
-    }
-
-    return $networkInfo
 }
 
 # Export the function
