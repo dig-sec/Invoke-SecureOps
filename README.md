@@ -42,13 +42,86 @@ src/
 
 1. Clone the repository:
    ```powershell
-   git clone https://github.com/yourusername/Invoke-SecureOps.git
+   git clone https://github.com/dig-sec/Invoke-SecureOps.git
    cd Invoke-SecureOps
    ```
 
 2. Import the module:
    ```powershell
    Import-Module .\Invoke-SecureOps.psm1
+   ```
+
+### Quick Start Guide
+
+1. **First-Time Setup**:
+   ```powershell
+   # Verify PowerShell version
+   $PSVersionTable.PSVersion
+
+   # Import the module
+   Import-Module .\Invoke-SecureOps.psm1
+
+   # Verify module is loaded
+   Get-Module Invoke-SecureOps
+   ```
+
+2. **Basic Security Assessment**:
+   ```powershell
+   # Run a complete security assessment
+   .\Invoke-SecureOps.ps1 -RunAll -OutputPath .\security_report.json -PrettyOutput
+
+   # Run focused checks on critical areas
+   .\Invoke-SecureOps.ps1 -Categories @("PowerShellSecurity", "Defender", "CredentialProtection") -OutputPath .\focused_report.json
+   ```
+
+3. **Understanding Results**:
+   - After each run, a summary is displayed showing:
+     - Total Tests Run
+     - Passed Tests
+     - Failed Tests
+     - Critical Issues
+     - Duration
+   - Detailed results are saved in the specified JSON file
+   - Review the JSON file for:
+     - Test results
+     - Findings
+     - Risk levels
+     - Evidence
+     - Recommendations
+
+4. **Best Practices**:
+   - Run full assessments monthly
+   - Run focused checks weekly
+   - Keep historical reports for comparison
+   - Address critical issues immediately
+   - Document any manual fixes applied
+
+5. **Common Use Cases**:
+   ```powershell
+   # Initial baseline assessment
+   .\Invoke-SecureOps.ps1 -RunAll -OutputPath .\baseline.json
+
+   # Regular security check
+   .\Invoke-SecureOps.ps1 -Categories @("PowerShellSecurity", "Defender") -OutputPath .\daily_check.json
+
+   # Compliance verification
+   .\Invoke-SecureOps.ps1 -Categories @("SystemSecurity", "Storage") -OutputPath .\compliance_report.json
+
+   # Auto-fix issues where possible
+   .\Invoke-SecureOps.ps1 -RunAll -AutoFix -OutputPath .\fixed_report.json
+   ```
+
+6. **Troubleshooting**:
+   - Ensure you have administrative privileges
+   - Check error messages in the output
+   - Verify the output path is writable
+   - Use `-Verbose` for detailed output
+   ```powershell
+   # Get help
+   Get-Help Invoke-SecureOps -Detailed
+
+   # View available commands
+   Get-Command -Module Invoke-SecureOps
    ```
 
 ## Usage
