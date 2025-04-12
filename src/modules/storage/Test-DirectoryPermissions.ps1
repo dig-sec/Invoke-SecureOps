@@ -6,10 +6,19 @@ function Test-DirectoryPermissions {
     [CmdletBinding()]
     param (
         [Parameter()]
-        [string]$OutputPath = ".\directory_permissions.json",
+        [string]$OutputPath,
         
         [Parameter()]
-        [switch]$PrettyOutput
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators = @{}
     )
 
     Write-SectionHeader "Directory Permissions Check"
@@ -101,6 +110,11 @@ function Test-DirectoryPermissions {
             -Description "Failed to check directory permissions: $($_.Exception.Message)" `
             -RiskLevel "High" `
             -AdditionalInfo $errorInfo
+    }
+
+    # Export results if output path provided
+    if ($OutputPath) {
+        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
     }
 
     return $testResult

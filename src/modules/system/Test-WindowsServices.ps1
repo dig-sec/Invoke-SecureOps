@@ -3,8 +3,22 @@
 # -----------------------------------------------------------------------------
 
 function Test-WindowsServices {
+    [CmdletBinding()]
     param (
-        [string]$OutputPath = ".\windows_services.json"
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators = @{}
     )
 
     Write-SectionHeader "Windows Services Check"
@@ -152,10 +166,9 @@ function Test-WindowsServices {
             }
     }
 
-    # Export results using common function
+    # Export results if output path provided
     if ($OutputPath) {
-        Export-ToJson -Data $servicesInfo -FilePath $OutputPath
-        Write-Output "Results exported to: $OutputPath"
+        Export-TestResult -TestResult $servicesInfo -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
     }
 
     return $servicesInfo

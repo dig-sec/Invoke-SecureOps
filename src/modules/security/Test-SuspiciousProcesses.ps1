@@ -3,38 +3,47 @@
 # -----------------------------------------------------------------------------
 
 function Test-SuspiciousProcesses {
+    [CmdletBinding()]
     param (
-        [string]$OutputPath = ".\suspicious_processes.json",
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators = @{},
+
+        [Parameter()]
         [switch]$DetailedAnalysis,
+
+        [Parameter()]
         [int]$MaxProcesses = 1000
     )
 
     Write-SectionHeader "Suspicious Process Analysis"
     Write-Output "Analyzing processes for suspicious behavior..."
 
-    # Check dependencies
-    $dependencies = Test-Dependencies -RequiredModules @("Microsoft.PowerShell.Diagnostics") -RequiredCommands @("Get-Process", "Get-WmiObject")
-
-    if (-not $dependencies.AllDependenciesMet) {
-        Write-Warning "Missing dependencies. Some checks may not work correctly."
-        Add-Finding -CheckName "Process Analysis" -Status "Warning" `
-            -Details "Missing required dependencies for process analysis" -Category "ThreatHunting" `
-            -AdditionalInfo @{
-                MissingDependencies = $dependencies
-                Recommendation = "Install missing dependencies and run the test again"
-            }
-    }
-
-    # Initialize JSON output object using common function
-    $processInfo = Initialize-JsonOutput -Category "SuspiciousProcesses" -RiskLevel "High" -ActionLevel "Review"
+    # Initialize test result
+    $testResult = Initialize-TestResult -TestName "Test-SuspiciousProcesses" -Category "Security" -Description "Analyzes processes for suspicious behavior"
 
     try {
         # Performance optimization: Use a more efficient way to get processes
         Write-Output "Collecting process information..."
         $processes = Get-Process -ErrorAction Stop | Select-Object -First $MaxProcesses
-        $processInfo.TotalProcesses = $processes.Count
-        $processInfo.AnalyzedProcesses = $processes.Count
-        $processInfo.MaxProcesses = $MaxProcesses
+
+        # Store process count information
+        $processCount = @{
+            TotalProcesses = $processes.Count
+            AnalyzedProcesses = $processes.Count
+            MaxProcesses = $MaxProcesses
+        }
 
         # Define suspicious process patterns
         $suspiciousPatterns = @(
@@ -80,9 +89,9 @@ function Test-SuspiciousProcesses {
             }
         )
 
-        # Performance optimization: Use hashtable for faster lookups
-        $processInfo.SuspiciousProcesses = @()
-        $processInfo.HighResourceProcesses = @()
+        # Create collections for findings
+        $suspiciousProcesses = @()
+        $highResourceProcesses = @()
         
         # Create a hashtable for faster pattern matching
         $patternLookup = @{}
@@ -146,7 +155,7 @@ function Test-SuspiciousProcesses {
                         }
                     }
 
-                    $processInfo.SuspiciousProcesses += $processDetails
+                    $suspiciousProcesses += $processDetails
                 }
             }
 
@@ -154,7 +163,7 @@ function Test-SuspiciousProcesses {
             try {
                 $cpuUsage = $process.CPU
                 if ($cpuUsage -gt 80) {
-                    $processInfo.HighResourceProcesses += @{
+                    $highResourceProcesses += @{
                         Type = "HighResourceUsage"
                         Name = $process.ProcessName
                         Id = $process.Id
@@ -173,49 +182,46 @@ function Test-SuspiciousProcesses {
         Write-Progress -Activity "Analyzing Processes" -Completed
 
         # Add findings based on suspicious processes
-        if ($processInfo.SuspiciousProcesses.Count -gt 0) {
-            Add-Finding -CheckName "Suspicious Processes" -Status "Warning" `
-                -Details "Found $($processInfo.SuspiciousProcesses.Count) suspicious processes" -Category "ThreatHunting" `
+        if ($suspiciousProcesses.Count -gt 0) {
+            Add-Finding -TestResult $testResult -FindingName "Suspicious Process Detection" -Status "Warning" `
+                -Description "Found $($suspiciousProcesses.Count) suspicious processes" -RiskLevel "High" `
                 -AdditionalInfo @{
-                    SuspiciousProcesses = $processInfo.SuspiciousProcesses
-                    TotalProcesses = $processInfo.TotalProcesses
-                    AnalyzedProcesses = $processInfo.AnalyzedProcesses
+                    SuspiciousProcesses = $suspiciousProcesses
+                    ProcessCount = $processCount
                     Recommendation = "Review these processes to determine if they are legitimate"
                 }
         }
         else {
-            Add-Finding -CheckName "Suspicious Processes" -Status "Pass" `
-                -Details "No suspicious processes found" -Category "ThreatHunting" `
+            Add-Finding -TestResult $testResult -FindingName "Suspicious Process Detection" -Status "Pass" `
+                -Description "No suspicious processes found" -RiskLevel "Info" `
                 -AdditionalInfo @{
-                    TotalProcesses = $processInfo.TotalProcesses
-                    AnalyzedProcesses = $processInfo.AnalyzedProcesses
+                    ProcessCount = $processCount
                 }
         }
 
         # Add findings for high resource usage
-        if ($processInfo.HighResourceProcesses.Count -gt 0) {
-            Add-Finding -CheckName "High Resource Usage" -Status "Info" `
-                -Details "Found $($processInfo.HighResourceProcesses.Count) processes with high resource usage" -Category "ThreatHunting" `
+        if ($highResourceProcesses.Count -gt 0) {
+            Add-Finding -TestResult $testResult -FindingName "High Resource Usage Detection" -Status "Info" `
+                -Description "Found $($highResourceProcesses.Count) processes with high resource usage" -RiskLevel "Low" `
                 -AdditionalInfo @{
-                    HighResourceProcesses = $processInfo.HighResourceProcesses
+                    HighResourceProcesses = $highResourceProcesses
                     Recommendation = "Monitor these processes for potential performance issues"
                 }
         }
     }
     catch {
         $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Suspicious Process Analysis"
-        Add-Finding -CheckName "Process Analysis" -Status "Error" `
-            -Details "Failed to analyze processes: $($_.Exception.Message)" -Category "ThreatHunting" `
+        Add-Finding -TestResult $testResult -FindingName "Process Analysis Error" -Status "Error" `
+            -Description "Failed to analyze processes: $($_.Exception.Message)" -RiskLevel "High" `
             -AdditionalInfo $errorInfo
     }
 
-    # Export results using common function
+    # Export results if output path provided
     if ($OutputPath) {
-        Export-ToJson -Data $processInfo -FilePath $OutputPath
-        Write-Output "Results exported to: $OutputPath"
+        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
     }
 
-    return $processInfo
+    return $testResult
 }
 
 # Export the function

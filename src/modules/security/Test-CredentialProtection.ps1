@@ -105,7 +105,7 @@ function Test-CredentialProtection {
 
     # Export results using common function
     if ($OutputPath) {
-        Export-JsonOutput -TestResult $credentialInfo -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+        Export-TestResult -TestResult $credentialInfo -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         Write-Output "Results exported to: $OutputPath"
     }
 

@@ -6,6 +6,7 @@
 . "$PSScriptRoot\src\modules\core\Helpers.ps1"
 
 # Import core modules
+. "$PSScriptRoot\src\modules\core\Test-BaseTemplate.ps1"
 . "$PSScriptRoot\src\modules\core\Test-Dependencies.ps1"
 . "$PSScriptRoot\src\modules\core\Test-SecurityIntegration.ps1"
 . "$PSScriptRoot\src\modules\core\Optimize-Performance.ps1"
@@ -32,6 +33,7 @@
 
 # Import storage modules
 . "$PSScriptRoot\src\modules\storage\Test-StorageEncryption.ps1"
+. "$PSScriptRoot\src\modules\storage\Test-DirectoryPermissions.ps1"
 
 # Define module-level variables
 $script:ModuleVersion = '2.0.0'
@@ -58,6 +60,11 @@ Export-ModuleMember -Function @(
     'Clear-TestCache',
     'Optimize-FileOperations',
     'Repair-SecurityIssues',
+    'Export-TestResult',
+    'Initialize-TestResult',
+    'Add-TestFinding',
+    'Compare-BaselineData',
+    'Add-Evidence',
     
     # System Security Functions
     'Test-SystemSecurity',

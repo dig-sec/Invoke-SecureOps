@@ -61,9 +61,7 @@ function Test-OS_EOL {
     
     # Export results if output path provided
     if ($OutputPath) {
-        Export-JsonOutput -TestResult $testResult `
-                         -OutputPath $OutputPath `
-                         -PrettyOutput:$PrettyOutput
+        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
     }
     
     return $testResult

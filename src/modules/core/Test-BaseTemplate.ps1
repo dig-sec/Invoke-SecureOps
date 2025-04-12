@@ -39,9 +39,6 @@ function Initialize-TestResult {
         [hashtable]$CurrentData = @{},
         
         [Parameter()]
-        [hashtable]$Findings = @{},
-        
-        [Parameter()]
         [hashtable]$Metadata = @{}
     )
     
@@ -56,72 +53,89 @@ function Initialize-TestResult {
         Recommendations = $Recommendations
         BaselineData = $BaselineData
         CurrentData = $CurrentData
-        Findings = $Findings
         Metadata = $Metadata
+        Findings = @()
         ExecutionTime = Get-Date
     }
     
     return $result
 }
 
-# Function to add a finding to a test result
-function Add-TestFinding {
+# Function to add a finding to test result
+function Add-Finding {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
         [hashtable]$TestResult,
         
         [Parameter(Mandatory)]
-        [string]$Title,
+        [string]$FindingName,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet('Pass', 'Fail', 'Warning', 'Info', 'Error', 'Skip')]
+        [string]$Status,
         
         [Parameter(Mandatory)]
         [string]$Description,
         
         [Parameter()]
         [ValidateSet('Critical', 'High', 'Medium', 'Low', 'Info')]
-        [string]$Severity = 'Medium',
+        [string]$RiskLevel = 'Medium',
         
         [Parameter()]
-        [string[]]$Tags = @(),
-        
-        [Parameter()]
-        [string[]]$ComplianceReferences = @(),
-        
-        [Parameter()]
-        [string[]]$Recommendations = @(),
-        
-        [Parameter()]
-        [hashtable]$TechnicalDetails = @{},
-        
-        [Parameter()]
-        [hashtable]$Evidence = @{}
+        [hashtable]$AdditionalInfo = @{}
     )
     
     $finding = @{
-        Title = $Title
+        Name = $FindingName
+        Status = $Status
         Description = $Description
-        Severity = $Severity
-        Tags = $Tags
-        ComplianceReferences = $ComplianceReferences
-        Recommendations = $Recommendations
-        TechnicalDetails = $TechnicalDetails
-        Evidence = $Evidence
-        Timestamp = Get-Date
+        RiskLevel = $RiskLevel
+        AdditionalInfo = $AdditionalInfo
+        Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     }
     
-    $TestResult.Findings[$Title] = $finding
-    
-    # Update test result status based on finding severity
-    if ($Severity -eq 'Critical' -or $Severity -eq 'High') {
-        $TestResult.Status = 'Fail'
-        $TestResult.RiskLevel = $Severity
-    }
-    elseif ($TestResult.Status -ne 'Fail' -and $Severity -eq 'Medium') {
-        $TestResult.Status = 'Fail'
-        $TestResult.RiskLevel = 'Medium'
+    if (-not $TestResult.Findings) {
+        $TestResult.Findings = @()
     }
     
-    return $TestResult
+    $TestResult.Findings += $finding
+    
+    # Update overall test status based on finding
+    switch ($Status) {
+        'Error' { 
+            $TestResult.Status = 'Error'
+            $TestResult.RiskLevel = 'High'
+        }
+        'Fail' {
+            if ($TestResult.Status -ne 'Error') {
+                $TestResult.Status = 'Fail'
+                if ($RiskLevel -eq 'Critical' -or $RiskLevel -eq 'High') {
+                    $TestResult.RiskLevel = $RiskLevel
+                }
+            }
+        }
+        'Warning' {
+            if ($TestResult.Status -notin @('Error', 'Fail')) {
+                $TestResult.Status = 'Warning'
+                if ($RiskLevel -eq 'Critical' -or $RiskLevel -eq 'High') {
+                    $TestResult.RiskLevel = $RiskLevel
+                }
+            }
+        }
+        'Info' {
+            if ($TestResult.Status -notin @('Error', 'Fail', 'Warning')) {
+                $TestResult.Status = 'Info'
+            }
+        }
+        'Pass' {
+            if ($TestResult.Status -notin @('Error', 'Fail', 'Warning', 'Info')) {
+                $TestResult.Status = 'Pass'
+            }
+        }
+    }
+    
+    return $finding
 }
 
 # Function to compare baseline and current data
@@ -252,13 +266,15 @@ function Export-TestResult {
         $exportData.Remove('Metadata')
     }
     
-    $json = $exportData | ConvertTo-Json -Depth 10
     if ($PrettyOutput) {
-        $json = $json | ForEach-Object { [System.Web.HttpUtility]::JavaScriptStringEncode($_, $true) }
+        $json = $exportData | ConvertTo-Json -Depth 10 -Compress:$false
+    }
+    else {
+        $json = $exportData | ConvertTo-Json -Depth 10 -Compress
     }
     
     if ($OutputPath) {
-        $json | Out-File -FilePath $OutputPath -Encoding UTF8
+        $json | Out-File -FilePath $OutputPath -Encoding UTF8 -NoNewline
         Write-Output "Test result exported to $OutputPath"
     }
     
@@ -267,7 +283,7 @@ function Export-TestResult {
 
 # Export functions
 Export-ModuleMember -Function Initialize-TestResult,
-                              Add-TestFinding,
+                              Add-Finding,
                               Compare-BaselineData,
                               Add-Evidence,
                               Export-TestResult 

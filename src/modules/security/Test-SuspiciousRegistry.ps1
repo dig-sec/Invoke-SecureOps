@@ -4,13 +4,20 @@
 
 function Test-SuspiciousRegistry {
     param (
-        [string]$OutputPath = ".\suspicious_registry.json"
+        [string]$OutputPath,
+        [switch]$PrettyOutput,
+        [string]$BaselinePath,
+        [switch]$CollectEvidence,
+        [hashtable]$CustomComparators
     )
 
     Write-SectionHeader "Suspicious Registry Analysis"
     Write-Output "Analyzing registry for suspicious entries..."
 
-    # Initialize results object
+    # Initialize test result
+    $testResult = Initialize-TestResult -Name "Test-SuspiciousRegistry"
+
+    # Initialize results object for internal tracking
     $results = @{
         SuspiciousActivities = @()
         TotalChecks = 0
@@ -121,19 +128,20 @@ function Test-SuspiciousRegistry {
 
         # Add finding based on suspicious registry entries
         if ($results.SuspiciousActivities.Count -gt 0) {
-            Add-Finding -CheckName "Suspicious Registry" -Status "Warning" `
-                -Details "Found $($results.SuspiciousActivities.Count) suspicious registry entries" -Category "ThreatHunting" `
+            Add-Finding -TestResult $testResult -FindingName "Suspicious Registry" -Status "Warning" `
+                -Description "Found $($results.SuspiciousActivities.Count) suspicious registry entries" -RiskLevel "High" `
                 -AdditionalInfo @{
                     SuspiciousActivities = $results.SuspiciousActivities
                     TotalChecks = $results.TotalChecks
                     PassedChecks = $results.PassedChecks
                     FailedChecks = $results.FailedChecks
                     WarningChecks = $results.WarningChecks
+                    Recommendation = "Review and investigate these registry entries for potential security risks"
                 }
         }
         else {
-            Add-Finding -CheckName "Registry Analysis" -Status "Pass" `
-                -Details "No suspicious registry entries found" -Category "ThreatHunting" `
+            Add-Finding -TestResult $testResult -FindingName "Registry Analysis" -Status "Pass" `
+                -Description "No suspicious registry entries found" -RiskLevel "Info" `
                 -AdditionalInfo @{
                     TotalChecks = $results.TotalChecks
                     PassedChecks = $results.PassedChecks
@@ -144,18 +152,18 @@ function Test-SuspiciousRegistry {
     }
     catch {
         $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Suspicious Registry Analysis"
-        Add-Finding -CheckName "Registry Analysis" -Status "Fail" `
-            -Details "Failed to analyze registry: $($_.Exception.Message)" -Category "ThreatHunting" `
+        Add-Finding -TestResult $testResult -FindingName "Registry Analysis" -Status "Error" `
+            -Description "Failed to analyze registry: $($_.Exception.Message)" -RiskLevel "High" `
             -AdditionalInfo $errorInfo
     }
 
     # Export results using common function
     if ($OutputPath) {
-        Export-ToJson -Data $results -FilePath $OutputPath
+        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         Write-Output "Results exported to: $OutputPath"
     }
 
-    return $results
+    return $testResult
 }
 
 # Export the function
