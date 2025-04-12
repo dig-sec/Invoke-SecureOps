@@ -100,15 +100,6 @@ Set-Alias -Name 'iso' -Value 'Invoke-SecurityOperations' -Scope Global
 Set-Alias -Name 'rsi' -Value 'Repair-SecurityIssues' -Scope Global
 Set-Alias -Name 'gsm' -Value 'Get-SecurityMitigations' -Scope Global
 
-# Module cleanup
-$MyInvocation.MyCommand.ScriptBlock.Module.OnImport = {
-    Write-Host "Invoke-SecureOps Module v$ModuleVersion loaded successfully."
-    Write-Host "Use 'iso' alias for quick access to security operations."
-}
-
-$MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
-    Write-Host "Invoke-SecureOps Module v$ModuleVersion unloaded."
-    Remove-Alias -Name 'iso' -Scope Global -ErrorAction SilentlyContinue
-    Remove-Alias -Name 'rsi' -Scope Global -ErrorAction SilentlyContinue
-    Remove-Alias -Name 'gsm' -Scope Global -ErrorAction SilentlyContinue
-} 
+# Module initialization message
+Write-Host "Invoke-SecureOps Module v$ModuleVersion loaded successfully."
+Write-Host "Use 'iso' alias for quick access to security operations." 
