@@ -74,7 +74,7 @@ function Test-SystemServices {
                 $service.PathName -notlike '"*"' -and 
                 $service.PathName -like "* *") {
                 
-                Add-Finding -TestResult $result -Name "Unquoted Service Path" `
+                Add-Finding -TestResult $result -FindingName "Unquoted Service Path" `
                     -Status "Warning" -RiskLevel "High" `
                     -Description "Service '$($service.Name)' has unquoted path: $($service.PathName)" `
                     -AdditionalInfo @{
@@ -90,7 +90,7 @@ function Test-SystemServices {
             
             # Check for services running as SYSTEM
             if ($service.StartName -eq "LocalSystem") {
-                Add-Finding -TestResult $result -Name "High Privilege Service" `
+                Add-Finding -TestResult $result -FindingName "High Privilege Service" `
                     -Status "Info" -RiskLevel "Medium" `
                     -Description "Service '$($service.Name)' runs with SYSTEM privileges" `
                     -AdditionalInfo @{
@@ -117,7 +117,7 @@ function Test-SystemServices {
                     $signature = Get-AuthenticodeSignature -FilePath $execPath -ErrorAction SilentlyContinue
                     
                     if (-not $signature.Status -eq 'Valid') {
-                        Add-Finding -TestResult $result -Name "Unsigned Service Binary" `
+                        Add-Finding -TestResult $result -FindingName "Unsigned Service Binary" `
                             -Status "Warning" -RiskLevel "High" `
                             -Description "Service '$($service.Name)' uses unsigned executable: $execPath" `
                             -AdditionalInfo @{
@@ -140,7 +140,7 @@ function Test-SystemServices {
                     }
                     
                     if ($weakPermissions) {
-                        Add-Finding -TestResult $result -Name "Weak Service Binary Permissions" `
+                        Add-Finding -TestResult $result -FindingName "Weak Service Binary Permissions" `
                             -Status "Warning" -RiskLevel "High" `
                             -Description "Service '$($service.Name)' binary has weak permissions" `
                             -AdditionalInfo @{
@@ -159,7 +159,7 @@ function Test-SystemServices {
                     }
                 }
                 else {
-                    Add-Finding -TestResult $result -Name "Missing Service Binary" `
+                    Add-Finding -TestResult $result -FindingName "Missing Service Binary" `
                         -Status "Warning" -RiskLevel "High" `
                         -Description "Service '$($service.Name)' executable not found: $execPath" `
                         -AdditionalInfo @{
@@ -177,7 +177,7 @@ function Test-SystemServices {
             # Check service permissions
             $sddl = $service.GetSecurityDescriptor().Descriptor.SDDL
             if ($sddl -match "A;.*;WD") {
-                Add-Finding -TestResult $result -Name "Weak Service Permissions" `
+                Add-Finding -TestResult $result -FindingName "Weak Service Permissions" `
                     -Status "Warning" -RiskLevel "High" `
                     -Description "Service '$($service.Name)' has weak DACL permissions" `
                     -AdditionalInfo @{
@@ -189,6 +189,7 @@ function Test-SystemServices {
                         State = $service.State
                         Recommendation = "Review and restrict service permissions"
                     }
+                }
             }
             
             if ($CollectEvidence) {
@@ -205,6 +206,7 @@ function Test-SystemServices {
                         SDDL = $sddl
                     } `
                     -Description "Configuration details for service $($service.Name)"
+                }
             }
         }
         

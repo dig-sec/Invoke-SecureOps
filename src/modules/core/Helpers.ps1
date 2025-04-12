@@ -25,6 +25,7 @@ function Initialize-JsonOutput {
         Description = ""
         Findings = @()
         Details = @{}
+        Evidence = @()
     }
 }
 

@@ -127,7 +127,7 @@ function Test-SuspiciousRegistry {
                     }
                     
                     if ($suspiciousEntries.Count -gt 0) {
-                        Add-Finding -TestResult $result -Name "$($suspiciousLocations[$location].Description)" `
+                        Add-Finding -TestResult $result -FindingName "$($suspiciousLocations[$location].Description)" `
                             -Status "Warning" -RiskLevel $suspiciousLocations[$location].RiskLevel `
                             -Description "Found $($suspiciousEntries.Count) entries in $location" `
                             -Recommendation "Review and verify all entries in this location"
@@ -139,7 +139,7 @@ function Test-SuspiciousRegistry {
                         }
                     }
                     else {
-                        Add-Finding -TestResult $result -Name "$($suspiciousLocations[$location].Description)" `
+                        Add-Finding -TestResult $result -FindingName "$($suspiciousLocations[$location].Description)" `
                             -Status "Pass" -RiskLevel "Info" `
                             -Description "No suspicious entries found in $location" `
                             -Recommendation "Continue monitoring for changes"
@@ -147,7 +147,7 @@ function Test-SuspiciousRegistry {
                 }
             }
             else {
-                Add-Finding -TestResult $result -Name "$($suspiciousLocations[$location].Description)" `
+                Add-Finding -TestResult $result -FindingName "$($suspiciousLocations[$location].Description)" `
                     -Status "Info" -RiskLevel "Low" `
                     -Description "Registry path $location does not exist" `
                     -Recommendation "Monitor for creation of this registry path"
@@ -191,10 +191,12 @@ function Test-SuspiciousRegistry {
                     if ($value) {
                         $actualValue = $value.$($valueCheck.Name)
                         if ($actualValue -ne $valueCheck.ExpectedValue) {
-                            Add-Finding -TestResult $result -Name $valueCheck.Description `
+                            Add-Finding -TestResult $result -FindingName $valueCheck.Description `
                                 -Status "Warning" -RiskLevel $valueCheck.RiskLevel `
                                 -Description "Suspicious value found: $($valueCheck.Name) = $actualValue (Expected: $($valueCheck.ExpectedValue))" `
-                                -Recommendation "Review and correct the registry value"
+                                -AdditionalInfo @{
+                                    Recommendation = "Review and correct the registry value"
+                                }
                             
                             if ($CollectEvidence) {
                                 Add-Evidence -TestResult $result -FindingName $valueCheck.Description `
@@ -207,10 +209,12 @@ function Test-SuspiciousRegistry {
                             }
                         }
                         else {
-                            Add-Finding -TestResult $result -Name $valueCheck.Description `
+                            Add-Finding -TestResult $result -FindingName $valueCheck.Description `
                                 -Status "Pass" -RiskLevel "Info" `
                                 -Description "$($valueCheck.Name) is set to the expected value" `
-                                -Recommendation "Continue monitoring for changes"
+                                -AdditionalInfo @{
+                                    Recommendation = "Continue monitoring for changes"
+                                }
                         }
                     }
                 }
@@ -226,7 +230,7 @@ function Test-SuspiciousRegistry {
     }
     catch {
         Write-Error "Error during suspicious registry test: $_"
-        Add-Finding -TestResult $result -Name "Test Error" -Status "Error" -RiskLevel "High" `
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" -RiskLevel "High" `
             -Description "An error occurred while checking registry: $_" `
             -Recommendation "Check system permissions and registry access"
         return $result

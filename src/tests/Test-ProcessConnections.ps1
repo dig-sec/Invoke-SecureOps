@@ -112,7 +112,7 @@ function Test-ProcessConnections {
                     $suspiciousPort = $suspiciousPorts | Where-Object { $_.Port -eq $remotePort }
                     
                     if ($suspiciousPort) {
-                        Add-Finding -TestResult $result -Name "Suspicious Port Connection" `
+                        Add-Finding -TestResult $result -FindingName "Suspicious Port Connection" `
                             -Status "Warning" -RiskLevel $suspiciousPort.RiskLevel `
                             -Description "Process $($process.Name) (PID: $($process.Id)) has connection on suspicious port $($suspiciousPort.Port) ($($suspiciousPort.Description))" `
                             -AdditionalInfo @{
@@ -138,7 +138,7 @@ function Test-ProcessConnections {
                 
                 # Check for high number of connections from single process
                 if ($processGroup.Count -gt 10) {
-                    Add-Finding -TestResult $result -Name "High Connection Count" `
+                    Add-Finding -TestResult $result -FindingName "High Connection Count" `
                         -Status "Warning" -RiskLevel "Medium" `
                         -Description "Process $($process.Name) (PID: $($process.Id)) has $($processGroup.Count) active connections" `
                         -AdditionalInfo @{
@@ -163,7 +163,7 @@ function Test-ProcessConnections {
                 }
                 
                 if ($privateConnections.Count -gt 0) {
-                    Add-Finding -TestResult $result -Name "Private Network Connections" `
+                    Add-Finding -TestResult $result -FindingName "Private Network Connection" `
                         -Status "Info" -RiskLevel "Low" `
                         -Description "Process $($process.Name) (PID: $($process.Id)) has $($privateConnections.Count) connections to private IP addresses" `
                         -AdditionalInfo @{
@@ -199,7 +199,7 @@ function Test-ProcessConnections {
     }
     catch {
         Write-Error "Error during process connections test: $_"
-        Add-Finding -TestResult $result -Name "Test Error" -Status "Error" -RiskLevel "High" `
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" -RiskLevel "High" `
             -Description "An error occurred while checking process connections: $_" `
             -Recommendation "Check system permissions and network access"
         return $result

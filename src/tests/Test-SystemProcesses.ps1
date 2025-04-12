@@ -121,7 +121,7 @@ function Test-SystemProcesses {
                 # Check for suspicious process names
                 foreach ($suspicious in $suspiciousNames) {
                     if ($process.ProcessName -match $suspicious.Name) {
-                        Add-Finding -TestResult $result -Name "Suspicious Process Name" `
+                        Add-Finding -TestResult $result -FindingName "Suspicious Process Name" `
                             -Status "Warning" -RiskLevel $suspicious.RiskLevel `
                             -Description "Found process with suspicious name: $($process.ProcessName)" `
                             -AdditionalInfo @{
@@ -139,7 +139,7 @@ function Test-SystemProcesses {
                 # Check process characteristics
                 foreach ($characteristic in $suspiciousCharacteristics) {
                     if (& $characteristic.Check $process) {
-                        Add-Finding -TestResult $result -Name "Suspicious Process Behavior" `
+                        Add-Finding -TestResult $result -FindingName "Suspicious Process Behavior" `
                             -Status "Warning" -RiskLevel $characteristic.RiskLevel `
                             -Description "$($characteristic.Description): $($process.ProcessName)" `
                             -AdditionalInfo @{
@@ -163,7 +163,7 @@ function Test-SystemProcesses {
                             $signature = Get-AuthenticodeSignature $_.FileName -ErrorAction SilentlyContinue
                             
                             if (-not $signature.Status -eq 'Valid') {
-                                Add-Finding -TestResult $result -Name "Unsigned Process Module" `
+                                Add-Finding -TestResult $result -FindingName "Unsigned Process Module" `
                                     -Status "Warning" -RiskLevel "High" `
                                     -Description "Found unsigned module in process: $($process.ProcessName)" `
                                     -AdditionalInfo @{
@@ -221,7 +221,7 @@ function Test-SystemProcesses {
     }
     catch {
         Write-Error "Error during system processes test: $_"
-        Add-Finding -TestResult $result -Name "Test Error" -Status "Error" -RiskLevel "High" `
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" -RiskLevel "High" `
             -Description "An error occurred while checking system processes: $_" `
             -Recommendation "Check system permissions and process access"
         return $result

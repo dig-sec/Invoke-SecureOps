@@ -88,10 +88,10 @@ function Test-Dependencies {
                         Get-ItemProperty -Name Version -ErrorAction SilentlyContinue |
                         Where-Object { $_.PSChildName -match "^(?!S)\p{L}*\d" } |
                         Select-Object -ExpandProperty Version
-                    $dotNetVersions | ForEach-Object {
+                    ($dotNetVersions | ForEach-Object {
                         $version = [version]$_
                         $version.Major -ge 4 -and $version.Minor -ge 7 -and $version.Build -ge 2
-                    } | Where-Object { $_ -eq $true } | Measure-Object | Select-Object -ExpandProperty Count -gt 0
+                    } | Where-Object { $_ -eq $true } | Measure-Object).Count -gt 0
                 }
                 GetVersion = { 
                     $dotNetVersions = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP" -Recurse |

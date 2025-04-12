@@ -19,9 +19,9 @@
         'Test-SuspiciousRegistry',
         'Test-UACStatus',
         'Test-WindowsServices',
-        'Initialize-TestResult',
         'Add-Evidence',
-        'Export-TestResult'
+        'Export-TestResult',
+        'Invoke-AllSecurityTests'
     )
     CmdletsToExport = @()
     VariablesToExport = '*'
