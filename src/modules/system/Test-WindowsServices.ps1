@@ -55,105 +55,73 @@ function Test-WindowsServices {
             $service = $serviceDetails | Where-Object { $_.Name -eq $criticalService.Name }
             
             if ($service) {
-                $serviceStatus = @{
-                    Name = $service.Name
-                    DisplayName = $service.DisplayName
-                    Description = $criticalService.Description
-                    StartMode = $service.StartMode
-                    State = $service.State
-                    LogOnAccount = $service.LogOnAccount
-                    PathName = $service.PathName
-                }
-                
-                $servicesInfo.CriticalServices += $serviceStatus
-                
-                # Add findings based on service status
                 if ($service.State -ne "Running") {
-                    Add-Finding -CheckName "Critical Service: $($service.DisplayName)" -Status "Warning" `
-                        -Details "Critical service $($service.DisplayName) is not running" -Category "WindowsServices" `
+                    Add-Finding -TestResult $servicesInfo -FindingName "Critical Service: $($service.DisplayName)" -Status "Warning" `
+                        -Description "Critical security service is not running" -RiskLevel "High" `
                         -AdditionalInfo @{
-                            Component = "Services"
                             ServiceName = $service.Name
                             DisplayName = $service.DisplayName
-                            CurrentState = $service.State
-                            ExpectedState = "Running"
-                            Recommendation = "Start the $($service.DisplayName) service"
-                        }
-                }
-                elseif ($service.StartMode -ne "Automatic") {
-                    Add-Finding -CheckName "Critical Service: $($service.DisplayName)" -Status "Warning" `
-                        -Details "Critical service $($service.DisplayName) is not set to start automatically" -Category "WindowsServices" `
-                        -AdditionalInfo @{
-                            Component = "Services"
-                            ServiceName = $service.Name
-                            DisplayName = $service.DisplayName
-                            CurrentStartMode = $service.StartMode
-                            ExpectedStartMode = "Automatic"
-                            Recommendation = "Set $($service.DisplayName) to start automatically"
-                        }
-                }
-                else {
-                    Add-Finding -CheckName "Critical Service: $($service.DisplayName)" -Status "Pass" `
-                        -Details "Critical service $($service.DisplayName) is running and set to start automatically" -Category "WindowsServices" `
-                        -AdditionalInfo @{
-                            Component = "Services"
-                            ServiceName = $service.Name
-                            DisplayName = $service.DisplayName
-                            State = $service.State
+                            Status = $service.State
                             StartMode = $service.StartMode
+                            LogOnAccount = $service.LogOnAccount
+                        }
+                } elseif ($service.StartMode -ne "Auto") {
+                    Add-Finding -TestResult $servicesInfo -FindingName "Critical Service: $($service.DisplayName)" -Status "Warning" `
+                        -Description "Critical security service is not set to start automatically" -RiskLevel "Medium" `
+                        -AdditionalInfo @{
+                            ServiceName = $service.Name
+                            DisplayName = $service.DisplayName
+                            Status = $service.State
+                            StartMode = $service.StartMode
+                            LogOnAccount = $service.LogOnAccount
+                        }
+                } else {
+                    Add-Finding -TestResult $servicesInfo -FindingName "Critical Service: $($service.DisplayName)" -Status "Pass" `
+                        -Description "Critical security service is running and set to start automatically" -RiskLevel "Info" `
+                        -AdditionalInfo @{
+                            ServiceName = $service.Name
+                            DisplayName = $service.DisplayName
+                            Status = $service.State
+                            StartMode = $service.StartMode
+                            LogOnAccount = $service.LogOnAccount
                         }
                 }
-            }
-            else {
-                Add-Finding -CheckName "Critical Service: $($criticalService.DisplayName)" -Status "Warning" `
-                    -Details "Critical service $($criticalService.DisplayName) is not installed" -Category "WindowsServices" `
+            } else {
+                Add-Finding -TestResult $servicesInfo -FindingName "Critical Service: $($criticalService.DisplayName)" -Status "Warning" `
+                    -Description "Critical security service not found" -RiskLevel "High" `
                     -AdditionalInfo @{
-                        Component = "Services"
                         ServiceName = $criticalService.Name
                         DisplayName = $criticalService.DisplayName
-                        Status = "Not Installed"
-                        Recommendation = "Consider installing $($criticalService.DisplayName) for better security"
+                        Description = $criticalService.Description
                     }
             }
         }
         
-        # Check for services running with high privileges
-        $highPrivilegeAccounts = @("LocalSystem", "NT AUTHORITY\SYSTEM", "NT AUTHORITY\LocalService", "NT AUTHORITY\NetworkService")
-        $highPrivilegeServices = $serviceDetails | Where-Object { $_.LogOnAccount -in $highPrivilegeAccounts }
+        # Check for high privilege services
+        $highPrivilegeServices = $serviceDetails | Where-Object { 
+            $_.LogOnAccount -eq "LocalSystem" -or 
+            $_.LogOnAccount -eq "NT AUTHORITY\SYSTEM" -or 
+            $_.LogOnAccount -eq "NT AUTHORITY\LocalService" -or 
+            $_.LogOnAccount -eq "NT AUTHORITY\NetworkService" 
+        }
         
-        $servicesInfo.HighPrivilegeServices = $highPrivilegeServices | ForEach-Object {
-            @{
-                DisplayName = $_.DisplayName
-                Name = $_.Name
-                StartMode = $_.StartMode
-                State = $_.State
-                LogOnAccount = $_.LogOnAccount
-                PathName = $_.PathName
+        Add-Finding -TestResult $servicesInfo -FindingName "High Privilege Services" -Status "Info" `
+            -Description "Found $($highPrivilegeServices.Count) services running with high privileges" -RiskLevel "Info" `
+            -AdditionalInfo @{
+                HighPrivilegeCount = $highPrivilegeServices.Count
+                Services = $highPrivilegeServices | Select-Object DisplayName, Name, LogOnAccount
             }
-        }
         
-        if ($highPrivilegeServices.Count -gt 0) {
-            Add-Finding -CheckName "High Privilege Services" -Status "Info" `
-                -Details "Found $($highPrivilegeServices.Count) services running with high privileges" -Category "WindowsServices" `
-                -AdditionalInfo @{
-                    Component = "Services"
-                    Count = $highPrivilegeServices.Count
-                    Services = $highPrivilegeServices | ForEach-Object {
-                        @{
-                            DisplayName = $_.DisplayName
-                            Name = $_.Name
-                            LogOnAccount = $_.LogOnAccount
-                        }
-                    }
-                    Recommendation = "Review these services to ensure they require high privileges"
-                }
-        }
-        
-        # Check for potentially dangerous services
+        # Check for dangerous services
         $dangerousServices = @(
-            @{Name="TlntSvr"; DisplayName="Telnet"; Description="Provides unencrypted remote access"},
-            @{Name="FTPSVC"; DisplayName="FTP Publishing Service"; Description="Provides unencrypted file transfer"},
-            @{Name="RemoteRegistry"; DisplayName="Remote Registry"; Description="Allows remote registry access"}
+            @{Name="RemoteRegistry"; DisplayName="Remote Registry"; Description="Allows remote registry access"},
+            @{Name="TelnetServer"; DisplayName="Telnet Server"; Description="Provides Telnet access"},
+            @{Name="TlntSvr"; DisplayName="Telnet Server"; Description="Provides Telnet access"},
+            @{Name="FTPSVC"; DisplayName="FTP Server"; Description="Provides FTP access"},
+            @{Name="MSFTPSVC"; DisplayName="FTP Server"; Description="Provides FTP access"},
+            @{Name="W3SVC"; DisplayName="World Wide Web Publishing Service"; Description="Provides web server functionality"},
+            @{Name="IISADMIN"; DisplayName="IIS Admin"; Description="Manages IIS services"},
+            @{Name="TermService"; DisplayName="Remote Desktop Services"; Description="Provides remote desktop access"}
         )
         
         $servicesInfo.DangerousServices = @()
@@ -161,36 +129,27 @@ function Test-WindowsServices {
             $service = $serviceDetails | Where-Object { $_.Name -eq $dangerousService.Name }
             
             if ($service -and $service.State -eq "Running") {
-                $serviceStatus = @{
-                    Name = $service.Name
-                    DisplayName = $service.DisplayName
-                    Description = $dangerousService.Description
-                    StartMode = $service.StartMode
-                    State = $service.State
-                    LogOnAccount = $service.LogOnAccount
-                    PathName = $service.PathName
-                }
-                
-                $servicesInfo.DangerousServices += $serviceStatus
-                
-                Add-Finding -CheckName "Dangerous Service: $($service.DisplayName)" -Status "Warning" `
-                    -Details "Potentially dangerous service $($service.DisplayName) is running" -Category "WindowsServices" `
+                Add-Finding -TestResult $servicesInfo -FindingName "Dangerous Service: $($service.DisplayName)" -Status "Warning" `
+                    -Description "Dangerous service is running" -RiskLevel "High" `
                     -AdditionalInfo @{
-                        Component = "Services"
                         ServiceName = $service.Name
                         DisplayName = $service.DisplayName
+                        Status = $service.State
+                        StartMode = $service.StartMode
+                        LogOnAccount = $service.LogOnAccount
                         Description = $dangerousService.Description
-                        CurrentState = $service.State
-                        Recommendation = "Consider disabling $($service.DisplayName) if not needed"
                     }
             }
         }
     }
     catch {
-        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Windows Services Analysis"
-        Add-Finding -CheckName "Windows Services" -Status "Error" `
-            -Details "Failed to check Windows services: $($_.Exception.Message)" -Category "WindowsServices" `
-            -AdditionalInfo $errorInfo
+        Write-Error "Error analyzing Windows services: $_"
+        Add-Finding -TestResult $servicesInfo -FindingName "Windows Services" -Status "Error" `
+            -Description "Failed to analyze Windows services: $($_.Exception.Message)" -RiskLevel "High" `
+            -AdditionalInfo @{
+                Error = $_.Exception.Message
+                StackTrace = $_.ScriptStackTrace
+            }
     }
 
     # Export results using common function

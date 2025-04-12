@@ -74,8 +74,11 @@ function Test-DefenderStatus {
             }
         }
         
-        # Check signature age
-        $signatureAge = (Get-Date) - $defenderStatus.AntivirusSignatureAge
+        # Check signature age - handle the date conversion properly
+        $currentDate = Get-Date
+        $signatureDate = [DateTime]::Parse($defenderStatus.AntivirusSignatureAge)
+        $signatureAge = $currentDate - $signatureDate
+        
         if ($signatureAge.Days -gt 7) {
             $finding = Add-Finding -TestResult $testResult `
                                  -FindingName "Outdated Antivirus Signatures" `
@@ -105,13 +108,12 @@ function Test-DefenderStatus {
                                             -CustomComparators $CustomComparators
             
             if ($comparison.Changes.Count -gt 0) {
-                $finding = Add-TestFinding -TestResult $testResult `
-                                         -Title "Configuration Changes Detected" `
-                                         -Description "Changes detected in Windows Defender configuration compared to baseline" `
-                                         -Severity "Medium" `
-                                         -Recommendation "Review changes and ensure they are authorized" `
-                                         -Tags @("Defender", "Baseline") `
-                                         -TechnicalDetails $comparison
+                $finding = Add-Finding -TestResult $testResult `
+                                     -FindingName "Configuration Changes Detected" `
+                                     -Status "Warning" `
+                                     -Description "Changes detected in Windows Defender configuration compared to baseline" `
+                                     -RiskLevel "Medium" `
+                                     -AdditionalInfo $comparison
                 
                 if ($CollectEvidence) {
                     Add-Evidence -Finding $finding `
@@ -124,7 +126,7 @@ function Test-DefenderStatus {
         
         # Export results if output path provided
         if ($OutputPath) {
-            Export-TestResult -TestResult $testResult `
+            Export-JsonOutput -TestResult $testResult `
                             -OutputPath $OutputPath `
                             -PrettyOutput:$PrettyOutput
         }
@@ -145,7 +147,7 @@ function Test-DefenderStatus {
                              }
         
         if ($OutputPath) {
-            Export-TestResult -TestResult $testResult `
+            Export-JsonOutput -TestResult $testResult `
                             -OutputPath $OutputPath `
                             -PrettyOutput:$PrettyOutput
         }

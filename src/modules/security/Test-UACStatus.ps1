@@ -3,71 +3,105 @@
 # -----------------------------------------------------------------------------
 
 function Test-UACStatus {
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators = @{}
+    )
+
     Write-SectionHeader "UAC Status Check"
-    Write-Output "Checking User Account Control settings..."
+    Write-Output "Analyzing User Account Control settings..."
+
+    # Initialize test result
+    $testResult = Initialize-JsonOutput -Category "Security" -RiskLevel "High"
 
     try {
-        # Get UAC settings from registry
-        $uacSettings = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -ErrorAction Stop
-
         # Check if UAC is enabled
-        if ($uacSettings.EnableLUA -eq 1) {
-            Add-Finding -CheckName "UAC Enabled" -Status "Pass" -Details "User Account Control is enabled"
+        $uacEnabled = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -ErrorAction Stop).EnableLUA -eq 1
+        
+        if ($uacEnabled) {
+            Add-Finding -TestResult $testResult -FindingName "UAC Enabled" -Status "Pass" -Description "User Account Control is enabled" -RiskLevel "Info"
         } else {
-            Add-Finding -CheckName "UAC Enabled" -Status "Fail" -Details "User Account Control is disabled"
+            Add-Finding -TestResult $testResult -FindingName "UAC Enabled" -Status "Fail" -Description "User Account Control is disabled" -RiskLevel "High"
         }
-
+        
         # Check UAC notification level
-        $notificationLevel = $uacSettings.PromptBehavior
+        $notificationLevel = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -ErrorAction Stop).ConsentPromptBehaviorAdmin
+        
         switch ($notificationLevel) {
             0 { 
-                Add-Finding -CheckName "UAC Notification Level" -Status "Warning" -Details "UAC is set to 'Never notify'"
+                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Warning" -Description "UAC is set to 'Never notify'" -RiskLevel "High"
             }
             1 { 
-                Add-Finding -CheckName "UAC Notification Level" -Status "Pass" -Details "UAC is set to 'Notify me only when programs try to make changes to my computer'"
+                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Pass" -Description "UAC is set to 'Notify me only when programs try to make changes to my computer'" -RiskLevel "Info"
             }
             2 { 
-                Add-Finding -CheckName "UAC Notification Level" -Status "Pass" -Details "UAC is set to 'Notify me only when programs try to make changes to my computer (do not dim my desktop)'"
+                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Pass" -Description "UAC is set to 'Notify me only when programs try to make changes to my computer (do not dim my desktop)'" -RiskLevel "Info"
             }
             3 { 
-                Add-Finding -CheckName "UAC Notification Level" -Status "Info" -Details "UAC is set to 'Always notify'"
+                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Info" -Description "UAC is set to 'Always notify'" -RiskLevel "Info"
             }
             4 { 
-                Add-Finding -CheckName "UAC Notification Level" -Status "Info" -Details "UAC is set to 'Always notify and wait for my response'"
+                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Info" -Description "UAC is set to 'Always notify and wait for my response'" -RiskLevel "Info"
             }
             5 { 
-                Add-Finding -CheckName "UAC Notification Level" -Status "Info" -Details "UAC is set to 'Always notify and wait for my response (do not dim my desktop)'"
+                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Info" -Description "UAC is set to 'Always notify and wait for my response (do not dim my desktop)'" -RiskLevel "Info"
             }
-            default {
-                Add-Finding -CheckName "UAC Notification Level" -Status "Warning" -Details "Unknown UAC notification level: $notificationLevel"
+            default { 
+                Add-Finding -TestResult $testResult -FindingName "UAC Notification Level" -Status "Warning" -Description "Unknown UAC notification level: $notificationLevel" -RiskLevel "Medium"
             }
         }
-
-        # Check if virtual file and registry write failures are virtualized
-        if ($uacSettings.EnableVirtualization -eq 1) {
-            Add-Finding -CheckName "UAC Virtualization" -Status "Pass" -Details "File and registry write failures are virtualized"
+        
+        # Check if file and registry write failures are virtualized
+        $virtualizationEnabled = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableVirtualization" -ErrorAction Stop).EnableVirtualization -eq 1
+        
+        if ($virtualizationEnabled) {
+            Add-Finding -TestResult $testResult -FindingName "UAC Virtualization" -Status "Pass" -Description "File and registry write failures are virtualized" -RiskLevel "Info"
         } else {
-            Add-Finding -CheckName "UAC Virtualization" -Status "Warning" -Details "File and registry write failures are not virtualized"
+            Add-Finding -TestResult $testResult -FindingName "UAC Virtualization" -Status "Warning" -Description "File and registry write failures are not virtualized" -RiskLevel "Medium"
         }
-
+        
         # Check if admin approval mode is enabled
-        if ($uacSettings.EnableInstallerDetection -eq 1) {
-            Add-Finding -CheckName "Admin Approval Mode" -Status "Pass" -Details "Admin approval mode is enabled"
+        $adminApprovalMode = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "FilterAdministratorToken" -ErrorAction Stop).FilterAdministratorToken -eq 1
+        
+        if ($adminApprovalMode) {
+            Add-Finding -TestResult $testResult -FindingName "Admin Approval Mode" -Status "Pass" -Description "Admin approval mode is enabled" -RiskLevel "Info"
         } else {
-            Add-Finding -CheckName "Admin Approval Mode" -Status "Warning" -Details "Admin approval mode is disabled"
+            Add-Finding -TestResult $testResult -FindingName "Admin Approval Mode" -Status "Warning" -Description "Admin approval mode is disabled" -RiskLevel "High"
         }
-
-        # Check if secure desktop is enabled
-        if ($uacSettings.PromptOnSecureDesktop -eq 1) {
-            Add-Finding -CheckName "Secure Desktop" -Status "Pass" -Details "UAC prompts on secure desktop"
+        
+        # Check if UAC prompts on secure desktop
+        $secureDesktop = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "PromptOnSecureDesktop" -ErrorAction Stop).PromptOnSecureDesktop -eq 1
+        
+        if ($secureDesktop) {
+            Add-Finding -TestResult $testResult -FindingName "Secure Desktop" -Status "Pass" -Description "UAC prompts on secure desktop" -RiskLevel "Info"
         } else {
-            Add-Finding -CheckName "Secure Desktop" -Status "Warning" -Details "UAC prompts do not use secure desktop"
+            Add-Finding -TestResult $testResult -FindingName "Secure Desktop" -Status "Warning" -Description "UAC prompts do not use secure desktop" -RiskLevel "Medium"
         }
     }
     catch {
         Write-Error "Error checking UAC status: $_"
-        Add-Finding -CheckName "UAC Status" -Status "Error" -Details "Failed to check UAC status: $_"
+        Add-Finding -TestResult $testResult -FindingName "UAC Status" -Status "Error" -Description "Failed to check UAC status: $_" -RiskLevel "High"
     }
+    
+    # Export results if output path provided
+    if ($OutputPath) {
+        Export-JsonOutput -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+    }
+    
+    return $testResult
 }
 
 Export-ModuleMember -Function Test-UACStatus 

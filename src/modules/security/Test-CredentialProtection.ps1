@@ -3,8 +3,22 @@
 # -----------------------------------------------------------------------------
 
 function Test-CredentialProtection {
+    [CmdletBinding()]
     param (
-        [string]$OutputPath = ".\credential_protection.json"
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators = @{}
     )
 
     Write-SectionHeader "Credential Protection Check"
@@ -34,57 +48,48 @@ function Test-CredentialProtection {
             Status = $credentialManager.Status
         }
 
-        # Add findings based on credential protection status
-        if ($credentialGuard.SecurityServicesRunning -notcontains "CredentialGuard") {
-            Add-Finding -CheckName "Credential Guard" -Status "Warning" `
-                -Details "Credential Guard is not running" -Category "CredentialProtection" `
-                -AdditionalInfo @{
-                    Component = "CredentialGuard"
-                    Status = "Disabled"
-                    Services = $credentialGuard.SecurityServicesRunning
-                }
-        }
-        else {
-            Add-Finding -CheckName "Credential Guard" -Status "Pass" `
-                -Details "Credential Guard is running" -Category "CredentialProtection" `
+        # Check Credential Guard
+        if ($credentialGuard.SecurityServicesRunning -contains 1) {
+            Add-Finding -TestResult $credentialInfo -FindingName "Credential Guard" -Status "Pass" `
+                -Description "Credential Guard is enabled" -RiskLevel "Info" `
                 -AdditionalInfo @{
                     Component = "CredentialGuard"
                     Status = "Enabled"
-                    Services = $credentialGuard.SecurityServicesRunning
+                    SecurityServices = $credentialGuard.SecurityServicesRunning
+                }
+        } else {
+            Add-Finding -TestResult $credentialInfo -FindingName "Credential Guard" -Status "Warning" `
+                -Description "Credential Guard is not enabled" -RiskLevel "High" `
+                -AdditionalInfo @{
+                    Component = "CredentialGuard"
+                    Status = "Disabled"
+                    SecurityServices = $credentialGuard.SecurityServicesRunning
                 }
         }
 
-        if (-not $lsaProtection.RunAsPPL) {
-            Add-Finding -CheckName "LSA Protection" -Status "Warning" `
-                -Details "LSA Protection is not enabled" -Category "CredentialProtection" `
+        # Check LSA Protection
+        if ($lsaProtection.RunAsPPL -eq 1) {
+            Add-Finding -TestResult $credentialInfo -FindingName "LSA Protection" -Status "Pass" `
+                -Description "LSA Protection is enabled" -RiskLevel "Info" `
+                -AdditionalInfo @{
+                    Component = "LSAProtection"
+                    Status = "Enabled"
+                    RunAsPPL = $lsaProtection.RunAsPPL
+                }
+        } else {
+            Add-Finding -TestResult $credentialInfo -FindingName "LSA Protection" -Status "Warning" `
+                -Description "LSA Protection is not enabled" -RiskLevel "High" `
                 -AdditionalInfo @{
                     Component = "LSAProtection"
                     Status = "Disabled"
                     RunAsPPL = $lsaProtection.RunAsPPL
                 }
         }
-        else {
-            Add-Finding -CheckName "LSA Protection" -Status "Pass" `
-                -Details "LSA Protection is enabled" -Category "CredentialProtection" `
-                -AdditionalInfo @{
-                    Component = "LSAProtection"
-                    Status = "Enabled"
-                    RunAsPPL = $lsaProtection.RunAsPPL
-                }
-        }
 
-        if ($credentialManager.Status -ne "Running") {
-            Add-Finding -CheckName "Credential Manager" -Status "Warning" `
-                -Details "Credential Manager service is not running" -Category "CredentialProtection" `
-                -AdditionalInfo @{
-                    Component = "CredentialManager"
-                    Status = $credentialManager.Status
-                    ExpectedStatus = "Running"
-                }
-        }
-        else {
-            Add-Finding -CheckName "Credential Manager" -Status "Pass" `
-                -Details "Credential Manager service is running" -Category "CredentialProtection" `
+        # Check Credential Manager service
+        if ($credentialManager.Status -eq "Running") {
+            Add-Finding -TestResult $credentialInfo -FindingName "Credential Manager" -Status "Pass" `
+                -Description "Credential Manager service is running" -RiskLevel "Info" `
                 -AdditionalInfo @{
                     Component = "CredentialManager"
                     Status = "Running"
@@ -93,14 +98,14 @@ function Test-CredentialProtection {
     }
     catch {
         $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Credential Protection Analysis"
-        Add-Finding -CheckName "Credential Protection" -Status "Error" `
-            -Details "Failed to check credential protection: $($_.Exception.Message)" -Category "CredentialProtection" `
+        Add-Finding -TestResult $credentialInfo -FindingName "Credential Protection" -Status "Error" `
+            -Description "Failed to check credential protection: $($_.Exception.Message)" -RiskLevel "High" `
             -AdditionalInfo $errorInfo
     }
 
     # Export results using common function
     if ($OutputPath) {
-        Export-ToJson -Data $credentialInfo -FilePath $OutputPath
+        Export-JsonOutput -TestResult $credentialInfo -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         Write-Output "Results exported to: $OutputPath"
     }
 
