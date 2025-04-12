@@ -1,7 +1,6 @@
 # Invoke-SecureOps
-
 <p align="center">
-  <img src="docs/Invoke-SecureOps.png" alt="Invoke-SecureOps Logo" width="200">
+    <img src="docs/Invoke-SecureOps.png" alt="Invoke-SecureOps Logo" width="200" style="border-radius: 50%;">
 </p>
 
 A comprehensive Windows security assessment and remediation toolkit for PowerShell.
