@@ -55,158 +55,65 @@ function Test-SystemServices {
         [string]$BaselinePath,
         
         [Parameter()]
-        [switch]$CollectEvidence,
-        
-        [Parameter()]
-        [hashtable]$CustomComparators = @{}
+        [switch]$CollectEvidence
     )
     
     # Initialize test result
-    $result = Initialize-TestResult -TestName "Test-SystemServices" -Category "Security" -Description "Analyzes system services for security issues"
+    $result = Initialize-TestResult -TestName "Test-SystemServices" `
+                                  -Category "Security" `
+                                  -Description "Analyzes system services for security risks" `
+                                  -Status "Info" `
+                                  -RiskLevel "Info"
     
     try {
         # Get all services
         $services = Get-WmiObject -Class Win32_Service
         
         foreach ($service in $services) {
-            # Check for unquoted service paths
-            if ($service.PathName -and 
-                $service.PathName -notlike '"*"' -and 
-                $service.PathName -like "* *") {
+            try {
+                # Get service security descriptor
+                $sddl = (Get-Item "HKLM:\System\CurrentControlSet\Services\$($service.Name)").GetAccessControl().Sddl
                 
-                Add-Finding -TestResult $result -FindingName "Unquoted Service Path" `
-                    -Status "Warning" -RiskLevel "High" `
-                    -Description "Service '$($service.Name)' has unquoted path: $($service.PathName)" `
-                    -AdditionalInfo @{
-                        Component = "SystemServices"
-                        ServiceName = $service.Name
+                # Add finding for each service
+                Add-Finding -TestResult $result -FindingName "Service Configuration" `
+                    -Status "Info" `
+                    -RiskLevel "Info" `
+                    -Description "Service $($service.Name) configuration review" `
+                    -TechnicalDetails @{
+                        Name = $service.Name
                         DisplayName = $service.DisplayName
-                        PathName = $service.PathName
-                        StartMode = $service.StartMode
+                        StartType = $service.StartType
                         State = $service.State
-                        Recommendation = "Add quotes around the service path"
-                    }
-            }
-            
-            # Check for services running as SYSTEM
-            if ($service.StartName -eq "LocalSystem") {
-                Add-Finding -TestResult $result -FindingName "High Privilege Service" `
-                    -Status "Info" -RiskLevel "Medium" `
-                    -Description "Service '$($service.Name)' runs with SYSTEM privileges" `
-                    -AdditionalInfo @{
-                        Component = "SystemServices"
-                        ServiceName = $service.Name
-                        DisplayName = $service.DisplayName
+                        PathName = $service.PathName
                         Account = $service.StartName
-                        PathName = $service.PathName
-                        StartMode = $service.StartMode
-                        State = $service.State
-                        Recommendation = "Verify if SYSTEM privileges are required"
+                        Description = $service.Description
+                        Recommendation = $recommendation
                     }
-            }
-            
-            # Check service executable path
-            if ($service.PathName) {
-                $execPath = $service.PathName.Split('"')[1]
-                if (-not $execPath) {
-                    $execPath = $service.PathName.Split(' ')[0]
-                }
                 
-                if (Test-Path $execPath) {
-                    # Check file signature
-                    $signature = Get-AuthenticodeSignature -FilePath $execPath -ErrorAction SilentlyContinue
-                    
-                    if (-not $signature.Status -eq 'Valid') {
-                        Add-Finding -TestResult $result -FindingName "Unsigned Service Binary" `
-                            -Status "Warning" -RiskLevel "High" `
-                            -Description "Service '$($service.Name)' uses unsigned executable: $execPath" `
-                            -AdditionalInfo @{
-                                Component = "SystemServices"
-                                ServiceName = $service.Name
-                                DisplayName = $service.DisplayName
-                                ExecutablePath = $execPath
-                                SignatureStatus = $signature.Status
-                                StartMode = $service.StartMode
-                                State = $service.State
-                                Recommendation = "Verify service binary authenticity"
-                            }
-                    }
-                    
-                    # Check file permissions
-                    $acl = Get-Acl -Path $execPath -ErrorAction SilentlyContinue
-                    $weakPermissions = $acl.Access | Where-Object {
-                        $_.FileSystemRights -match "FullControl|Modify|Write" -and
-                        $_.IdentityReference -notmatch "NT AUTHORITY\\SYSTEM|BUILTIN\\Administrators"
-                    }
-                    
-                    if ($weakPermissions) {
-                        Add-Finding -TestResult $result -FindingName "Weak Service Binary Permissions" `
-                            -Status "Warning" -RiskLevel "High" `
-                            -Description "Service '$($service.Name)' binary has weak permissions" `
-                            -AdditionalInfo @{
-                                Component = "SystemServices"
-                                ServiceName = $service.Name
-                                DisplayName = $service.DisplayName
-                                ExecutablePath = $execPath
-                                WeakPermissions = $weakPermissions | ForEach-Object {
-                                    @{
-                                        Identity = $_.IdentityReference.Value
-                                        Rights = $_.FileSystemRights.ToString()
-                                    }
-                                }
-                                Recommendation = "Review and restrict file permissions"
-                            }
-                    }
-                }
-                else {
-                    Add-Finding -TestResult $result -FindingName "Missing Service Binary" `
-                        -Status "Warning" -RiskLevel "High" `
-                        -Description "Service '$($service.Name)' executable not found: $execPath" `
-                        -AdditionalInfo @{
-                            Component = "SystemServices"
+                # Add evidence if requested
+                if ($CollectEvidence) {
+                    Add-Evidence -TestResult $result `
+                        -FindingName "Service: $($service.Name)" `
+                        -EvidenceType "Configuration" `
+                        -EvidenceData @{
                             ServiceName = $service.Name
                             DisplayName = $service.DisplayName
-                            ExecutablePath = $execPath
+                            PathName = $service.PathName
                             StartMode = $service.StartMode
                             State = $service.State
-                            Recommendation = "Verify service configuration and binary location"
-                        }
+                            StartName = $service.StartName
+                            SDDL = $sddl
+                        } `
+                        -Description "Configuration details for service $($service.Name)"
                 }
             }
-            
-            # Check service permissions
-            $sddl = $service.GetSecurityDescriptor().Descriptor.SDDL
-            if ($sddl -match "A;.*;WD") {
-                Add-Finding -TestResult $result -FindingName "Weak Service Permissions" `
-                    -Status "Warning" -RiskLevel "High" `
-                    -Description "Service '$($service.Name)' has weak DACL permissions" `
-                    -AdditionalInfo @{
-                        Component = "SystemServices"
-                        ServiceName = $service.Name
-                        DisplayName = $service.DisplayName
-                        SDDL = $sddl
-                        StartMode = $service.StartMode
-                        State = $service.State
-                        Recommendation = "Review and restrict service permissions"
-                    }
-                }
-            }
-            
-            if ($CollectEvidence) {
-                Add-Evidence -TestResult $result `
-                    -FindingName "Service Configuration" `
-                    -EvidenceType "ServiceConfig" `
-                    -EvidenceData @{
-                        ServiceName = $service.Name
-                        DisplayName = $service.DisplayName
-                        PathName = $service.PathName
-                        StartMode = $service.StartMode
-                        State = $service.State
-                        StartName = $service.StartName
-                        SDDL = $sddl
-                    } `
-                    -Description "Configuration details for service $($service.Name)"
-                }
+            catch {
+                Write-Warning "Error processing service $($service.Name): $_"
+                Add-Finding -TestResult $result `
+                    -FindingName "Service Error: $($service.Name)" `
+                    -Status "Warning" `
+                    -RiskLevel "Medium" `
+                    -Description "Error processing service: $_"
             }
         }
         
@@ -219,9 +126,13 @@ function Test-SystemServices {
     }
     catch {
         Write-Error "Error during system services test: $_"
-        Add-Finding -TestResult $result -Name "Test Error" -Status "Error" -RiskLevel "High" `
-            -Description "An error occurred while checking system services: $_" `
-            -Recommendation "Check system permissions and service access"
+        Add-Finding -TestResult $result -FindingName "Test Error" `
+            -Status "Error" `
+            -RiskLevel "High" `
+            -Description "Error during system services test: $_" `
+            -TechnicalDetails @{
+                Recommendation = "Check system permissions and service access"
+            }
         return $result
     }
 }

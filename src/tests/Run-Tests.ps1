@@ -11,7 +11,7 @@ param(
     [switch]$All,
     
     [Parameter()]
-    [string]$OutputPath = ".\results",
+    [string]$OutputPath = "$PSScriptRoot\..\..\results",
     
     [Parameter()]
     [switch]$PrettyOutput,
@@ -47,11 +47,31 @@ param(
     [switch]$VerboseOutput
 )
 
+# Set up error handling
+$ErrorActionPreference = "Stop"
+if ($VerboseOutput) {
+    $VerbosePreference = "Continue"
+}
+
+# Resolve the output path to be in the root directory
+$OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
+Write-Verbose "Using output path: $OutputPath"
+
+# Create output directory if it doesn't exist
+if ($OutputPath -and -not (Test-Path $OutputPath)) {
+    New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
+    Write-Verbose "Created output directory: $OutputPath"
+}
+
 # Import required modules
-Import-Module "$PSScriptRoot\SecureOpsTests.psm1" -Force
+$modulePath = Join-Path $PSScriptRoot "SecureOpsTests.psm1"
+if (-not (Test-Path $modulePath)) {
+    throw "Required module not found: $modulePath"
+}
+Import-Module $modulePath -Force
 
 # Initialize test results container
-$global:TestResults = @{
+$script:TestResults = @{
     StartTime = Get-Date
     EndTime = $null
     TotalTests = 0
@@ -64,7 +84,11 @@ $global:TestResults = @{
 }
 
 # Load test categories
-$categoriesConfig = Get-Content "$PSScriptRoot\TestCategories.json" | ConvertFrom-Json
+$categoriesPath = Join-Path $PSScriptRoot "TestCategories.json"
+if (-not (Test-Path $categoriesPath)) {
+    throw "Test categories configuration not found: $categoriesPath"
+}
+$categoriesConfig = Get-Content $categoriesPath | ConvertFrom-Json
 
 function Get-TestsToRun {
     param(
@@ -76,9 +100,9 @@ function Get-TestsToRun {
     $testsToRun = @()
     
     if ($All) {
-        $categoriesConfig.PSObject.Properties | ForEach-Object {
-            $testsToRun += $_.Value.tests
-        }
+        # Get all test files from the directory
+        $testFiles = Get-ChildItem -Path $PSScriptRoot -Filter "Test-*.ps1" | Where-Object { $_.Name -ne "Test-Template.ps1" }
+        $testsToRun = $testFiles | ForEach-Object { $_.BaseName }
     }
     elseif ($TestNames) {
         $testsToRun = $TestNames
@@ -105,22 +129,42 @@ function Invoke-Test {
     
     try {
         Write-Verbose "Running test: $TestName"
+        
+        # Verify test function exists
+        if (-not (Get-Command $TestName -ErrorAction SilentlyContinue)) {
+            Write-Warning "Test function not found: $TestName"
+            $script:TestResults.SkippedTests++
+            return $null
+        }
+        
+        # Execute test
         $result = & $TestName @Parameters
         
-        $global:TestResults.Results += $result
-        $global:TestResults.TotalTests++
-        
-        if ($result.Status -eq "Pass") {
-            $global:TestResults.PassedTests++
-        }
-        else {
-            $global:TestResults.FailedTests++
+        if ($result) {
+            $script:TestResults.Results += $result
+            $script:TestResults.TotalTests++
+            
+            if ($result.Status -eq "Pass") {
+                $script:TestResults.PassedTests++
+            }
+            elseif ($result.Status -in @("Error", "Critical")) {
+                $script:TestResults.FailedTests++
+            }
+            
+            # Export individual test result
+            if ($OutputPath) {
+                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                $resultPath = Join-Path $OutputPath "${TestName}_${timestamp}.json"
+                $result | ConvertTo-Json -Depth 10 | Set-Content $resultPath
+                Write-Verbose "Results exported to: $resultPath"
+            }
         }
         
         return $result
     }
     catch {
         Write-Error "Error running test $TestName : $_"
+        $script:TestResults.FailedTests++
         if (-not $ContinueOnFailure) {
             throw
         }
@@ -133,6 +177,11 @@ function Export-TestReport {
         [string]$OutputPath,
         [string]$Format = "HTML"
     )
+    
+    if (-not $OutputPath) {
+        Write-Warning "No output path specified for report"
+        return
+    }
     
     $reportPath = Join-Path $OutputPath "test_report.$($Format.ToLower())"
     
@@ -159,16 +208,18 @@ function Export-TestReport {
     <h1>Security Test Report</h1>
     <div class="summary">
         <h2>Summary</h2>
-        <p>Start Time: $($global:TestResults.StartTime)</p>
-        <p>End Time: $($global:TestResults.EndTime)</p>
-        <p>Total Tests: $($global:TestResults.TotalTests)</p>
-        <p>Passed: $($global:TestResults.PassedTests)</p>
-        <p>Failed: $($global:TestResults.FailedTests)</p>
-        <p>Skipped: $($global:TestResults.SkippedTests)</p>
+        <p>Start Time: $($script:TestResults.StartTime)</p>
+        <p>End Time: $($script:TestResults.EndTime)</p>
+        <p>Total Tests: $($script:TestResults.TotalTests)</p>
+        <p>Passed: $($script:TestResults.PassedTests)</p>
+        <p>Failed: $($script:TestResults.FailedTests)</p>
+        <p>Skipped: $($script:TestResults.SkippedTests)</p>
     </div>
 "@
             
-            foreach ($result in $global:TestResults.Results) {
+            foreach ($result in $script:TestResults.Results) {
+                if (-not $result) { continue }
+                
                 $status = if ($result.Status) { $result.Status.ToLower() } else { "info" }
                 $htmlReport += @"
     <div class="test-result $status">
@@ -210,82 +261,63 @@ function Export-TestReport {
 </html>
 "@
             
-            $htmlReport | Out-File -FilePath $reportPath -Encoding UTF8
+            $htmlReport | Set-Content $reportPath -Force
+            Write-Verbose "Report exported to: $reportPath"
         }
+        
         "json" {
-            $global:TestResults | ConvertTo-Json -Depth 10 | Out-File -FilePath $reportPath
+            $script:TestResults | ConvertTo-Json -Depth 10 | Set-Content $reportPath -Force
+            Write-Verbose "Report exported to: $reportPath"
         }
+        
         default {
             Write-Warning "Unsupported report format: $Format"
         }
     }
-    
-    Write-Output "Report exported to: $reportPath"
 }
 
 # Main execution
 try {
-    # Create output directory if it doesn't exist
-    if (-not (Test-Path $OutputPath)) {
-        New-Item -ItemType Directory -Path $OutputPath | Out-Null
-    }
+    Write-Verbose "Starting test execution..."
     
     # Get tests to run
     $testsToRun = Get-TestsToRun -TestNames $TestNames -Categories $Categories -All:$All
+    
+    if (-not $testsToRun) {
+        throw "No tests selected for execution"
+    }
+    
+    Write-Verbose "Selected tests: $($testsToRun -join ', ')"
     
     # Prepare test parameters
     $testParams = @{
         OutputPath = $OutputPath
         PrettyOutput = $PrettyOutput
         DetailedAnalysis = $DetailedAnalysis
+        BaselinePath = $BaselinePath
         CollectEvidence = $CollectEvidence
-        CustomComparators = $CustomComparators
     }
     
-    if ($BaselinePath) {
-        $testParams["BaselinePath"] = $BaselinePath
-    }
-    
-    # Run tests
-    if ($Parallel) {
-        $jobs = @()
-        foreach ($test in $testsToRun) {
-            $jobs += Start-Job -ScriptBlock {
-                param($TestName, $Params)
-                Import-Module "$using:PSScriptRoot\SecureOpsTests.psm1" -Force
-                & $TestName @Params
-            } -ArgumentList $test, $testParams
-            
-            # Limit concurrent jobs
-            while ((Get-Job -State Running).Count -ge $MaxParallelJobs) {
-                Start-Sleep -Seconds 1
-            }
+    # Execute tests
+    foreach ($test in $testsToRun) {
+        if ($Parallel) {
+            # TODO: Implement parallel execution
+            Write-Warning "Parallel execution not yet implemented"
         }
-        
-        # Wait for all jobs to complete
-        $jobs | Wait-Job | Receive-Job
-    }
-    else {
-        foreach ($test in $testsToRun) {
+        else {
             Invoke-Test -TestName $test -Parameters $testParams
         }
     }
     
-    # Set end time
-    $global:TestResults.EndTime = Get-Date
+    # Update end time
+    $script:TestResults.EndTime = Get-Date
     
     # Generate report if requested
     if ($GenerateReport) {
         Export-TestReport -OutputPath $OutputPath -Format $ReportFormat
     }
     
-    # Output summary
-    Write-Output "`nTest Execution Summary:"
-    Write-Output "Total Tests: $($global:TestResults.TotalTests)"
-    Write-Output "Passed: $($global:TestResults.PassedTests)"
-    Write-Output "Failed: $($global:TestResults.FailedTests)"
-    Write-Output "Skipped: $($global:TestResults.SkippedTests)"
-    Write-Output "Duration: $($global:TestResults.EndTime - $global:TestResults.StartTime)"
+    Write-Verbose "Test execution completed"
 }
 catch {
     Write-Error "Error during test execution: $_"

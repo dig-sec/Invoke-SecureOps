@@ -70,9 +70,13 @@ function Test-AMSIBypass {
             $amsiDll = Get-Item $amsiDllPath
             $fileHash = Get-FileHash -Path $amsiDllPath -Algorithm SHA256
             
-            Add-Finding -TestResult $result -Name "AMSI DLL Presence" -Status "Pass" -RiskLevel "Info" `
-                -Description "AMSI DLL is present at expected location" `
-                -Recommendation "No action required"
+            Add-Finding -TestResult $result -FindingName "AMSI DLL Presence" -Status "Pass" -RiskLevel "Info" `
+                -Description "AMSI DLL found at expected location" `
+                -TechnicalDetails @{
+                    Path = $amsiDllPath
+                    FileVersion = (Get-Item $amsiDllPath).VersionInfo.FileVersion
+                    Recommendation = "Continue monitoring for changes"
+                }
             
             if ($CollectEvidence) {
                 Add-Evidence -TestResult $result -FindingName "AMSI DLL Presence" `
@@ -85,17 +89,24 @@ function Test-AMSIBypass {
             }
         }
         else {
-            Add-Finding -TestResult $result -Name "AMSI DLL Missing" -Status "Critical" -RiskLevel "Critical" `
-                -Description "AMSI DLL is missing from the expected location" `
-                -Recommendation "Verify system integrity and reinstall AMSI components"
+            Add-Finding -TestResult $result -FindingName "AMSI DLL Missing" -Status "Critical" -RiskLevel "Critical" `
+                -Description "AMSI DLL not found at expected location" `
+                -TechnicalDetails @{
+                    Path = $amsiDllPath
+                    Recommendation = "Investigate potential AMSI bypass attempt"
+                }
         }
         
-        # Check AMSI provider registration
-        $amsiProviders = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\AMSI\Providers" -ErrorAction SilentlyContinue
+        # Check AMSI providers
+        $amsiProviders = Get-WmiObject -Namespace "root\Microsoft\Windows\AMSI" -Class MSFT_Provider -ErrorAction SilentlyContinue
         if ($amsiProviders) {
-            Add-Finding -TestResult $result -Name "AMSI Providers" -Status "Pass" -RiskLevel "Info" `
-                -Description "AMSI providers are registered" `
-                -Recommendation "No action required"
+            Add-Finding -TestResult $result -FindingName "AMSI Providers" -Status "Pass" -RiskLevel "Info" `
+                -Description "AMSI providers found and registered" `
+                -TechnicalDetails @{
+                    ProviderCount = $amsiProviders.Count
+                    Providers = $amsiProviders | Select-Object Name, Version
+                    Recommendation = "Continue monitoring for changes"
+                }
             
             if ($CollectEvidence) {
                 Add-Evidence -TestResult $result -FindingName "AMSI Providers" `
@@ -103,63 +114,69 @@ function Test-AMSIBypass {
             }
         }
         else {
-            Add-Finding -TestResult $result -Name "AMSI Providers Missing" -Status "Critical" -RiskLevel "Critical" `
-                -Description "No AMSI providers are registered" `
-                -Recommendation "Verify antivirus software installation and AMSI integration"
+            Add-Finding -TestResult $result -FindingName "AMSI Providers Missing" -Status "Critical" -RiskLevel "Critical" `
+                -Description "No AMSI providers found" `
+                -TechnicalDetails @{
+                    Recommendation = "Investigate potential AMSI bypass attempt"
+                }
         }
         
-        # Check for common AMSI bypass indicators in PowerShell sessions
-        $amsiBypassIndicators = @(
-            '[Ref].Assembly.GetType',
-            'System.Management.Automation.AmsiUtils',
-            'amsiInitFailed',
-            '[Runtime.InteropServices.Marshal]::WriteInt32',
-            'AmsiScanBuffer'
-        )
-        
-        $psHistory = Get-History -ErrorAction SilentlyContinue
-        $suspiciousCommands = $psHistory | Where-Object {
-            $command = $_.CommandLine
-            $amsiBypassIndicators | Where-Object { $command -match $_ }
+        # Check for known AMSI bypass attempts in PowerShell history
+        $bypassAttempts = @()
+        $historyPath = "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt"
+        if (Test-Path $historyPath) {
+            $bypassAttempts = Get-Content $historyPath | Where-Object {
+                $_ -match "amsi\.dll|AmsiUtils|amsiInitFailed|System\.Management\.Automation\.AmsiUtils"
+            }
         }
         
-        if ($suspiciousCommands) {
-            Add-Finding -TestResult $result -Name "AMSI Bypass Attempts" -Status "Critical" -RiskLevel "Critical" `
-                -Description "Detected potential AMSI bypass attempts in PowerShell history" `
-                -Recommendation "Investigate suspicious PowerShell commands and implement additional monitoring"
+        if ($bypassAttempts) {
+            Add-Finding -TestResult $result -FindingName "AMSI Bypass Attempts" -Status "Critical" -RiskLevel "Critical" `
+                -Description "Found potential AMSI bypass attempts in PowerShell history" `
+                -TechnicalDetails @{
+                    AttemptCount = $bypassAttempts.Count
+                    Attempts = $bypassAttempts
+                    Recommendation = "Investigate these commands and the user who executed them"
+                }
             
             if ($CollectEvidence) {
                 Add-Evidence -TestResult $result -FindingName "AMSI Bypass Attempts" `
-                    -EvidenceType "CommandHistory" -EvidenceData $suspiciousCommands
+                    -EvidenceType "CommandHistory" -EvidenceData $bypassAttempts
             }
         }
         else {
-            Add-Finding -TestResult $result -Name "AMSI Bypass Detection" -Status "Pass" -RiskLevel "Info" `
-                -Description "No AMSI bypass attempts detected in PowerShell history" `
-                -Recommendation "Continue monitoring for suspicious activities"
+            Add-Finding -TestResult $result -FindingName "AMSI Bypass Detection" -Status "Pass" -RiskLevel "Info" `
+                -Description "No AMSI bypass attempts found in PowerShell history" `
+                -TechnicalDetails @{
+                    Recommendation = "Continue monitoring for bypass attempts"
+                }
         }
         
-        # Check AMSI event logs
-        $amsiEvents = Get-WinEvent -LogName "Microsoft-Windows-AMSI/Debug" -ErrorAction SilentlyContinue |
-            Where-Object { $_.TimeCreated -gt (Get-Date).AddDays(-7) }
-        
+        # Check Windows Event Log for AMSI-related events
+        $amsiEvents = Get-WinEvent -LogName "Microsoft-Windows-AMSI/Debug" -ErrorAction SilentlyContinue
         if ($amsiEvents) {
-            $suspiciousEvents = $amsiEvents | Where-Object { $_.LevelDisplayName -eq "Error" -or $_.LevelDisplayName -eq "Warning" }
-            if ($suspiciousEvents) {
-                Add-Finding -TestResult $result -Name "AMSI Events" -Status "Warning" -RiskLevel "Medium" `
-                    -Description "Detected suspicious AMSI events in the last 7 days" `
-                    -Recommendation "Review AMSI events for potential security issues"
-                
-                if ($CollectEvidence) {
-                    Add-Evidence -TestResult $result -FindingName "AMSI Events" `
-                        -EvidenceType "EventLog" -EvidenceData $suspiciousEvents
+            Add-Finding -TestResult $result -FindingName "AMSI Events" -Status "Warning" -RiskLevel "Medium" `
+                -Description "Found AMSI-related events in Windows Event Log" `
+                -TechnicalDetails @{
+                    EventCount = $amsiEvents.Count
+                    RecentEvents = $amsiEvents | Select-Object -First 5 | ForEach-Object { @{
+                        TimeCreated = $_.TimeCreated
+                        Message = $_.Message
+                    }}
+                    Recommendation = "Review these events for potential security issues"
                 }
+            
+            if ($CollectEvidence) {
+                Add-Evidence -TestResult $result -FindingName "AMSI Events" `
+                    -EvidenceType "EventLog" -EvidenceData $amsiEvents
             }
-            else {
-                Add-Finding -TestResult $result -Name "AMSI Events" -Status "Pass" -RiskLevel "Info" `
-                    -Description "No suspicious AMSI events detected in the last 7 days" `
-                    -Recommendation "Continue monitoring AMSI events"
-            }
+        }
+        else {
+            Add-Finding -TestResult $result -FindingName "AMSI Events" -Status "Pass" -RiskLevel "Info" `
+                -Description "No AMSI-related events found in Windows Event Log" `
+                -TechnicalDetails @{
+                    Recommendation = "Continue monitoring for AMSI events"
+                }
         }
         
         # Export results if output path is specified
@@ -171,9 +188,11 @@ function Test-AMSIBypass {
     }
     catch {
         Write-Error "Error during AMSI bypass test: $_"
-        Add-Finding -TestResult $result -Name "Test Error" -Status "Error" -RiskLevel "High" `
-            -Description "An error occurred while checking for AMSI bypass: $_" `
-            -Recommendation "Check system permissions and AMSI configuration"
+        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" -RiskLevel "High" `
+            -Description "Error during AMSI bypass test: $_" `
+            -TechnicalDetails @{
+                Recommendation = "Check system permissions and AMSI configuration"
+            }
         return $result
     }
 }

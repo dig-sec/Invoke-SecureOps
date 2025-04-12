@@ -68,44 +68,64 @@ function Test-AuthenticationControls {
         $netAccounts = net accounts | Out-String
         
         # Check maximum password age
-        $maxPwdAge = [int]($netAccounts | Select-String -Pattern "Maximum password age \(days\):\s+(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value })
-        Add-Finding -TestResult $result -Name "Maximum Password Age" `
-            -Status $(if ($maxPwdAge -le 90) { "Pass" } else { "Warning" }) `
-            -RiskLevel $(if ($maxPwdAge -le 90) { "Info" } else { "Medium" }) `
-            -Description "Maximum password age is set to $maxPwdAge days" `
-            -Recommendation $(if ($maxPwdAge -le 90) { "No action required" } else { "Consider reducing maximum password age to 90 days or less" })
+        $maxPasswordAge = [int]($netAccounts | Select-String -Pattern "Maximum password age \(days\):\s+(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value })
+        Add-Finding -TestResult $result -FindingName "Maximum Password Age" `
+            -Status $(if ($maxPasswordAge -le 90) { "Pass" } else { "Warning" }) `
+            -RiskLevel $(if ($maxPasswordAge -le 90) { "Info" } else { "Medium" }) `
+            -Description "Maximum password age is set to $maxPasswordAge days" `
+            -TechnicalDetails @{
+                Setting = "MaximumPasswordAge"
+                Value = $maxPasswordAge
+                Recommendation = if ($maxPasswordAge -gt 90) { "Set maximum password age to 90 days or less" }
+            }
         
         # Check minimum password length
-        $minPwdLength = [int]($netAccounts | Select-String -Pattern "Minimum password length:\s+(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value })
-        Add-Finding -TestResult $result -Name "Minimum Password Length" `
-            -Status $(if ($minPwdLength -ge 12) { "Pass" } else { "Warning" }) `
-            -RiskLevel $(if ($minPwdLength -ge 12) { "Info" } else { "Medium" }) `
-            -Description "Minimum password length is set to $minPwdLength characters" `
-            -Recommendation $(if ($minPwdLength -ge 12) { "No action required" } else { "Consider increasing minimum password length to at least 12 characters" })
+        $minPasswordLength = [int]($netAccounts | Select-String -Pattern "Minimum password length:\s+(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value })
+        Add-Finding -TestResult $result -FindingName "Minimum Password Length" `
+            -Status $(if ($minPasswordLength -ge 12) { "Pass" } else { "Warning" }) `
+            -RiskLevel $(if ($minPasswordLength -ge 12) { "Info" } else { "Medium" }) `
+            -Description "Minimum password length is set to $minPasswordLength characters" `
+            -TechnicalDetails @{
+                Setting = "MinimumPasswordLength"
+                Value = $minPasswordLength
+                Recommendation = if ($minPasswordLength -lt 12) { "Set minimum password length to at least 12 characters" }
+            }
         
         # Check password history
-        $pwdHistory = [int]($netAccounts | Select-String -Pattern "Length of password history maintained:\s+(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value })
-        Add-Finding -TestResult $result -Name "Password History" `
-            -Status $(if ($pwdHistory -ge 24) { "Pass" } else { "Warning" }) `
-            -RiskLevel $(if ($pwdHistory -ge 24) { "Info" } else { "Medium" }) `
-            -Description "Password history is set to remember $pwdHistory previous passwords" `
-            -Recommendation $(if ($pwdHistory -ge 24) { "No action required" } else { "Consider increasing password history to at least 24 passwords" })
+        $passwordHistory = [int]($netAccounts | Select-String -Pattern "Length of password history maintained:\s+(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value })
+        Add-Finding -TestResult $result -FindingName "Password History" `
+            -Status $(if ($passwordHistory -ge 24) { "Pass" } else { "Warning" }) `
+            -RiskLevel $(if ($passwordHistory -ge 24) { "Info" } else { "Medium" }) `
+            -Description "Password history size is set to $passwordHistory" `
+            -TechnicalDetails @{
+                Setting = "PasswordHistorySize"
+                Value = $passwordHistory
+                Recommendation = if ($passwordHistory -lt 24) { "Set password history to at least 24 previous passwords" }
+            }
         
         # Check account lockout threshold
         $lockoutThreshold = [int]($netAccounts | Select-String -Pattern "Lockout threshold:\s+(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value })
-        Add-Finding -TestResult $result -Name "Account Lockout Threshold" `
+        Add-Finding -TestResult $result -FindingName "Account Lockout Threshold" `
             -Status $(if ($lockoutThreshold -gt 0 -and $lockoutThreshold -le 5) { "Pass" } else { "Warning" }) `
             -RiskLevel $(if ($lockoutThreshold -gt 0 -and $lockoutThreshold -le 5) { "Info" } else { "Medium" }) `
-            -Description "Account lockout threshold is set to $lockoutThreshold failed attempts" `
-            -Recommendation $(if ($lockoutThreshold -gt 0 -and $lockoutThreshold -le 5) { "No action required" } else { "Configure account lockout threshold between 1 and 5 failed attempts" })
+            -Description "Account lockout threshold is set to $lockoutThreshold attempts" `
+            -TechnicalDetails @{
+                Setting = "LockoutThreshold"
+                Value = $lockoutThreshold
+                Recommendation = if ($lockoutThreshold -eq 0 -or $lockoutThreshold -gt 5) { "Set account lockout threshold between 1 and 5 attempts" }
+            }
         
-        # Check lockout duration
+        # Check account lockout duration
         $lockoutDuration = [int]($netAccounts | Select-String -Pattern "Lockout duration \(minutes\):\s+(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value })
-        Add-Finding -TestResult $result -Name "Account Lockout Duration" `
+        Add-Finding -TestResult $result -FindingName "Account Lockout Duration" `
             -Status $(if ($lockoutDuration -ge 15) { "Pass" } else { "Warning" }) `
             -RiskLevel $(if ($lockoutDuration -ge 15) { "Info" } else { "Medium" }) `
             -Description "Account lockout duration is set to $lockoutDuration minutes" `
-            -Recommendation $(if ($lockoutDuration -ge 15) { "No action required" } else { "Consider increasing account lockout duration to at least 15 minutes" })
+            -TechnicalDetails @{
+                Setting = "LockoutDuration"
+                Value = $lockoutDuration
+                Recommendation = if ($lockoutDuration -lt 15) { "Set account lockout duration to at least 15 minutes" }
+            }
         
         # Check password complexity requirements
         try {
@@ -114,17 +134,36 @@ function Test-AuthenticationControls {
             $complexityEnabled = Select-String -Path $tempFile -Pattern "PasswordComplexity\s*=\s*1"
             Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
             
-            Add-Finding -TestResult $result -Name "Password Complexity" `
-                -Status $(if ($complexityEnabled) { "Pass" } else { "Warning" }) `
-                -RiskLevel $(if ($complexityEnabled) { "Info" } else { "Medium" }) `
-                -Description "Password complexity requirements are $(if ($complexityEnabled) { 'enabled' } else { 'disabled' })" `
-                -Recommendation $(if ($complexityEnabled) { "No action required" } else { "Enable password complexity requirements" })
+            if ($complexityEnabled) {
+                Add-Finding -TestResult $result -FindingName "Password Complexity" `
+                    -Status "Pass" `
+                    -RiskLevel "Info" `
+                    -Description "Password complexity requirements are enabled" `
+                    -TechnicalDetails @{
+                        Setting = "PasswordComplexity"
+                        Value = $complexityEnabled
+                        Recommendation = "Continue enforcing password complexity requirements"
+                    }
+            }
+            else {
+                Add-Finding -TestResult $result -FindingName "Password Complexity Check Failed" `
+                    -Status "Warning" `
+                    -RiskLevel "Medium" `
+                    -Description "Password complexity requirements are disabled" `
+                    -TechnicalDetails @{
+                        Setting = "PasswordComplexity"
+                        Value = $complexityEnabled
+                        Recommendation = "Enable password complexity requirements"
+                    }
+            }
         }
         catch {
-            Add-Finding -TestResult $result -Name "Password Complexity Check Failed" `
+            Add-Finding -TestResult $result -FindingName "Password Complexity Check Failed" `
                 -Status "Warning" -RiskLevel "Medium" `
                 -Description "Unable to check password complexity requirements: $_" `
-                -Recommendation "Verify access to security policy settings"
+                -TechnicalDetails @{
+                    Recommendation = "Verify access to security policy settings"
+                }
         }
         
         if ($CollectEvidence) {
@@ -142,9 +181,13 @@ function Test-AuthenticationControls {
     }
     catch {
         Write-Error "Error during authentication controls test: $_"
-        Add-Finding -TestResult $result -Name "Test Error" -Status "Error" -RiskLevel "High" `
-            -Description "An error occurred while checking authentication controls: $_" `
-            -Recommendation "Check system permissions and policy access"
+        Add-Finding -TestResult $result -FindingName "Test Error" `
+            -Status "Error" `
+            -RiskLevel "High" `
+            -Description "Error during authentication controls test: $_" `
+            -TechnicalDetails @{
+                Recommendation = "Check system permissions and security policy access"
+            }
         return $result
     }
 }

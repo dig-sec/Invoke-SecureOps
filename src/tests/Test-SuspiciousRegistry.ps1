@@ -127,15 +127,23 @@ function Test-SuspiciousRegistry {
                     }
                     
                     if ($suspiciousEntries.Count -gt 0) {
-                        Add-Finding -TestResult $result -FindingName "$($suspiciousLocations[$location].Description)" `
-                            -Status "Warning" -RiskLevel $suspiciousLocations[$location].RiskLevel `
-                            -Description "Found $($suspiciousEntries.Count) entries in $location" `
-                            -Recommendation "Review and verify all entries in this location"
-                        
-                        if ($CollectEvidence) {
-                            Add-Evidence -TestResult $result -FindingName "$($suspiciousLocations[$location].Description)" `
-                                -EvidenceType "Registry" -EvidenceData $suspiciousEntries `
-                                -Description "Registry entries found in $location"
+                        foreach ($entry in $suspiciousEntries) {
+                            Add-Finding -TestResult $result `
+                                -Name "Suspicious Registry Entry" `
+                                -Status "Warning" `
+                                -RiskLevel "Medium" `
+                                -Description "Found suspicious registry entry: $($entry.Path)" `
+                                -TechnicalDetails @{
+                                    Path = $entry.Path
+                                    Value = $entry.Value
+                                    Recommendation = "Review and remove if unauthorized"
+                                }
+                            
+                            if ($CollectEvidence) {
+                                Add-Evidence -TestResult $result -FindingName "$($suspiciousLocations[$location].Description)" `
+                                    -EvidenceType "Registry" -EvidenceData $entry `
+                                    -Description "Registry entry found in $location"
+                            }
                         }
                     }
                     else {
@@ -194,7 +202,7 @@ function Test-SuspiciousRegistry {
                             Add-Finding -TestResult $result -FindingName $valueCheck.Description `
                                 -Status "Warning" -RiskLevel $valueCheck.RiskLevel `
                                 -Description "Suspicious value found: $($valueCheck.Name) = $actualValue (Expected: $($valueCheck.ExpectedValue))" `
-                                -AdditionalInfo @{
+                                -TechnicalDetails @{
                                     Recommendation = "Review and correct the registry value"
                                 }
                             
@@ -212,7 +220,7 @@ function Test-SuspiciousRegistry {
                             Add-Finding -TestResult $result -FindingName $valueCheck.Description `
                                 -Status "Pass" -RiskLevel "Info" `
                                 -Description "$($valueCheck.Name) is set to the expected value" `
-                                -AdditionalInfo @{
+                                -TechnicalDetails @{
                                     Recommendation = "Continue monitoring for changes"
                                 }
                         }

@@ -112,20 +112,17 @@ function Test-StartupItems {
                             $hash = Get-FileHash -Path $filePath -ErrorAction SilentlyContinue
                         }
                         
-                        Add-Finding -TestResult $result -Name "$($location.Description) Item" `
+                        Add-Finding -TestResult $result -FindingName "$($location.Description) Item" `
                             -Status $(if ($fileExists -and $signature.Status -eq 'Valid') { "Info" } else { "Warning" }) `
                             -RiskLevel $(if ($fileExists -and $signature.Status -eq 'Valid') { "Low" } else { $location.RiskLevel }) `
                             -Description "Found startup item: $($item.Name)" `
-                            -AdditionalInfo @{
-                                Component = "StartupItems"
-                                Location = $location.Path
-                                ItemName = $item.Name
+                            -TechnicalDetails @{
+                                Name = $item.Name
+                                Path = $filePath
                                 Command = $filePath
-                                FileExists = $fileExists
-                                Signed = if ($fileExists -and $signature) { $signature.Status -eq 'Valid' } else { $false }
-                                SignatureStatus = if ($fileExists -and $signature) { $signature.Status.ToString() } else { "Unknown" }
-                                FileHash = if ($fileExists -and $hash) { $hash.Hash } else { $null }
-                                Recommendation = "Verify this startup item is authorized"
+                                User = $item.User
+                                Location = $location.Path
+                                Recommendation = "Review startup item and verify it is authorized"
                             }
                     }
                 }
@@ -154,9 +151,18 @@ function Test-StartupItems {
                     $signature = Get-AuthenticodeSignature -FilePath $item.FullName -ErrorAction SilentlyContinue
                     $hash = Get-FileHash -Path $item.FullName -ErrorAction SilentlyContinue
                     
-                    Add-Finding -TestResult $result -Name "$($folder.Description) Item" `
+                    Add-Finding -TestResult $result -FindingName "$($folder.Description) Item" `
                         -Status $(if ($signature.Status -eq 'Valid') { "Info" } else { "Warning" }) `
                         -RiskLevel $(if ($signature.Status -eq 'Valid') { "Low" } else { $folder.RiskLevel }) `
+                        -Description "Found startup folder item: $($item.Name)" `
+                        -TechnicalDetails @{
+                            Name = $item.Name
+                            Path = $item.FullName
+                            CreationTime = $item.CreationTime
+                            LastWriteTime = $item.LastWriteTime
+                            FileHash = (Get-FileHash -Path $item.FullName -Algorithm SHA256).Hash
+                            Recommendation = "Review startup item and verify it is authorized"
+                        }
                         -Description "Found startup item: $($item.Name)" `
                         -AdditionalInfo @{
                             Component = "StartupItems"

@@ -2,23 +2,6 @@
 # SecureOps Tests Module
 # -----------------------------------------------------------------------------
 
-# Import helper functions
-$helperPath = Join-Path -Path $PSScriptRoot -ChildPath "..\modules\core\Helpers.ps1"
-if (Test-Path $helperPath) {
-    . $helperPath
-} else {
-    throw "Could not find Helpers.ps1 at $helperPath"
-}
-
-# Import all test modules
-$testPath = $PSScriptRoot
-Get-ChildItem -Path $testPath -Filter "Test-*.ps1" | ForEach-Object {
-    . $_.FullName
-}
-
-# Export all test functions
-Export-ModuleMember -Function "Test-*"
-
 # Helper functions for test modules
 function Initialize-TestResult {
     [CmdletBinding()]
@@ -235,5 +218,40 @@ function Export-TestResult {
     return $TestResult
 }
 
-# Export helper functions
-Export-ModuleMember -Function "Initialize-TestResult", "Add-Finding", "Add-Evidence", "Export-TestResult" 
+# Import helper functions first
+$helperPath = Join-Path -Path $PSScriptRoot -ChildPath "..\modules\core\Helpers.ps1"
+if (Test-Path $helperPath) {
+    . $helperPath
+} else {
+    # Try alternate path
+    $helperPath = Join-Path -Path $PSScriptRoot -ChildPath "Helpers.ps1"
+    if (Test-Path $helperPath) {
+        . $helperPath
+    } else {
+        Write-Warning "Could not find Helpers.ps1 in any expected location"
+    }
+}
+
+# Import all test modules
+$testPath = $PSScriptRoot
+$testModules = @()
+Get-ChildItem -Path $testPath -Filter "Test-*.ps1" | ForEach-Object {
+    try {
+        . $_.FullName
+        $testModules += $_.BaseName
+        Write-Verbose "Loaded test module: $($_.Name)"
+    } catch {
+        Write-Warning "Failed to load test module $($_.Name): $_"
+    }
+}
+
+# Export helper functions first
+Export-ModuleMember -Function Initialize-TestResult, Add-Finding, Add-Evidence, Export-TestResult
+
+# Export test modules that were successfully loaded
+$testModules | ForEach-Object {
+    if (Get-Command $_ -ErrorAction SilentlyContinue) {
+        Export-ModuleMember -Function $_
+        Write-Verbose "Exported test module: $_"
+    }
+} 

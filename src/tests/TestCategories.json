@@ -1,26 +1,20 @@
 {
     "Security": {
-        "description": "Security-related tests including authentication, UAC, and security controls",
+        "description": "Security-related tests",
         "tests": [
-            "Test-AuthenticationControls",
-            "Test-UACStatus",
-            "Test-SuspiciousRegistry",
             "Test-SuspiciousConnections",
             "Test-SuspiciousFiles",
-            "Test-AMSIBypass"
+            "Test-SuspiciousRegistry",
+            "Test-UACStatus"
         ],
         "priority": "High",
-        "dependencies": ["System"]
+        "dependencies": []
     },
     "System": {
-        "description": "System configuration and health tests",
+        "description": "System configuration tests",
         "tests": [
             "Test-SystemServices",
-            "Test-Dependencies",
-            "Test-PatchStatus",
-            "Test-ProcessConnections",
-            "Test-StartupItems",
-            "Test-SystemProcesses"
+            "Test-WindowsServices"
         ],
         "priority": "Medium",
         "dependencies": []
