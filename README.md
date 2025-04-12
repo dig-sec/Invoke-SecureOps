@@ -1,9 +1,10 @@
 # Invoke-SecureOps
+
+A comprehensive Windows security assessment and remediation toolkit for PowerShell.
+
 <p align="center">
     <img src="docs/Invoke-SecureOps.png" alt="Invoke-SecureOps Logo" width="200" style="border-radius: 50%;">
 </p>
-
-A comprehensive Windows security assessment and remediation toolkit for PowerShell.
 
 ## Overview
 
