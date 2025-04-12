@@ -2,16 +2,27 @@
 # Invoke-SecureOps Module
 # -----------------------------------------------------------------------------
 
-# Import all test modules from the tests directory
-Get-ChildItem -Path $PSScriptRoot\tests -Filter "Test-*.ps1" | ForEach-Object {
-    . $_.FullName
+# Import helper functions first
+. "$PSScriptRoot\src\modules\core\Helpers.ps1"
+
+# Import test framework
+Import-Module "$PSScriptRoot\src\tests\SecureOpsTests.psm1" -Force
+
+# Import all test modules
+$testFiles = @(
+    "$PSScriptRoot\src\tests\Test-SuspiciousConnections.ps1",
+    "$PSScriptRoot\src\tests\Test-AMSIBypass.ps1",
+    "$PSScriptRoot\src\tests\Test-AuthenticationControls.ps1"
+)
+
+foreach ($file in $testFiles) {
+    if (Test-Path $file) {
+        . $file
+    }
+    else {
+        Write-Warning "Test file not found: $file"
+    }
 }
-
-# Set up the iso alias for Invoke-SecurityOperations
-Set-Alias -Name iso -Value Invoke-SecurityOperations
-
-# Export all functions that start with "Test-"
-Export-ModuleMember -Function Test-* -Alias iso
 
 # Define module-level variables
 $script:ModuleVersion = '2.0.0'
@@ -21,12 +32,16 @@ $script:ModulePath = $PSScriptRoot
 # Initialize module state
 $script:TestResults = @{}
 $script:Findings = @()
-$script:OptimizationSettings = @{
-    EnableParallelProcessing = $true
-    MaxConcurrentTests = 4
-    CacheResults = $true
-    VerboseOutput = $false
-}
+
+# Export functions
+Export-ModuleMember -Function @(
+    'Test-SuspiciousConnections',
+    'Test-AMSIBypass',
+    'Test-AuthenticationControls',
+    'Add-Finding',
+    'Initialize-TestResult',
+    'Export-TestResult'
+)
 
 # Export variables
 Export-ModuleMember -Variable @(
@@ -34,10 +49,8 @@ Export-ModuleMember -Variable @(
     'ModuleName',
     'ModulePath',
     'TestResults',
-    'Findings',
-    'OptimizationSettings'
+    'Findings'
 )
 
 # Module initialization message
-Write-Host "Invoke-SecureOps Module v$ModuleVersion loaded successfully."
-Write-Host "Use 'iso' alias for quick access to security operations." 
+Write-Host "Invoke-SecureOps Module v$ModuleVersion loaded successfully." 

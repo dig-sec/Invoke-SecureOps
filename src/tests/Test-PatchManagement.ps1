@@ -1,42 +1,40 @@
 # -----------------------------------------------------------------------------
-# Patch Management Check
+# Patch Management Analysis Module
 # -----------------------------------------------------------------------------
 
 function Test-PatchManagement {
     [CmdletBinding()]
     param (
         [Parameter()]
-        [string]$OutputPath = ".\patch_management.json",
+        [string]$OutputPath,
         
         [Parameter()]
-        [switch]$PrettyOutput
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence
     )
 
     Write-SectionHeader "Patch Management Check"
-    Write-Output "Analyzing Windows Update configuration and patch status..."
+    Write-Output "Analyzing patch management status..."
 
     # Initialize test result using helper function
-    $testResult = Initialize-JsonOutput -Category "PatchManagement" -RiskLevel "High"
+    $testResult = Initialize-TestResult -TestName "Test-PatchManagement" -Category "System" -Description "Windows patch management check" -RiskLevel "High"
     
     try {
-        # Check Windows Update service status
-        $wuaService = Get-Service -Name "wuauserv"
+        # Get Windows Update service status
+        $wuaService = Get-Service -Name "wuauserv" -ErrorAction Stop
         
-        # Check Windows Update policy
-        $autoUpdatePath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update"
-        $autoUpdateSettings = Get-ItemProperty -Path $autoUpdatePath -ErrorAction SilentlyContinue
-        
-        # Check last update time
-        $lastUpdate = Get-HotFix | Sort-Object -Property InstalledOn -Descending | Select-Object -First 1
-        
-        # Add findings based on service status
         if ($wuaService.Status -ne "Running") {
             $testResult = Add-Finding -TestResult $testResult `
-                -FindingName "Windows Update Service" `
+                -Name "Windows Update Service" `
                 -Status "Warning" `
                 -Description "Windows Update service is not running" `
                 -RiskLevel "High" `
-                -AdditionalInfo @{
+                -TechnicalDetails @{
                     ServiceName = $wuaService.Name
                     Status = $wuaService.Status
                     StartType = $wuaService.StartType
@@ -44,64 +42,78 @@ function Test-PatchManagement {
         }
         else {
             $testResult = Add-Finding -TestResult $testResult `
-                -FindingName "Windows Update Service" `
+                -Name "Windows Update Service" `
                 -Status "Pass" `
                 -Description "Windows Update service is running" `
                 -RiskLevel "Info" `
-                -AdditionalInfo @{
+                -TechnicalDetails @{
                     ServiceName = $wuaService.Name
                     Status = $wuaService.Status
                     StartType = $wuaService.StartType
                 }
         }
 
-        # Add finding for last update time
+        # Get update history
+        $session = New-Object -ComObject "Microsoft.Update.Session"
+        $searcher = $session.CreateUpdateSearcher()
+        $history = $searcher.GetTotalHistoryCount()
+        $recentUpdates = $searcher.QueryHistory(0, $history)
+        
+        $lastUpdate = $recentUpdates | Where-Object { $_.Operation -eq 1 } | Sort-Object Date -Descending | Select-Object -First 1
+        
         if ($lastUpdate) {
-            $daysSinceUpdate = (Get-Date) - $lastUpdate.InstalledOn
-            if ($daysSinceUpdate.Days -gt 30) {
+            $daysSinceLastUpdate = ((Get-Date) - $lastUpdate.Date).Days
+            
+            if ($daysSinceLastUpdate -gt 30) {
                 $testResult = Add-Finding -TestResult $testResult `
-                    -FindingName "Last Update Time" `
+                    -Name "Update History" `
                     -Status "Warning" `
-                    -Description "System has not been updated in more than 30 days" `
+                    -Description "No updates have been installed in the last 30 days" `
                     -RiskLevel "High" `
-                    -AdditionalInfo @{
-                        LastUpdate = $lastUpdate.InstalledOn
-                        DaysSinceUpdate = $daysSinceUpdate.Days
-                        HotFixID = $lastUpdate.HotFixID
+                    -TechnicalDetails @{
+                        LastUpdateDate = $lastUpdate.Date
+                        DaysSinceLastUpdate = $daysSinceLastUpdate
+                        LastUpdateTitle = $lastUpdate.Title
                     }
             }
             else {
                 $testResult = Add-Finding -TestResult $testResult `
-                    -FindingName "Last Update Time" `
+                    -Name "Update History" `
                     -Status "Pass" `
-                    -Description "System updates are current" `
+                    -Description "System has been updated within the last 30 days" `
                     -RiskLevel "Info" `
-                    -AdditionalInfo @{
-                        LastUpdate = $lastUpdate.InstalledOn
-                        DaysSinceUpdate = $daysSinceUpdate.Days
-                        HotFixID = $lastUpdate.HotFixID
+                    -TechnicalDetails @{
+                        LastUpdateDate = $lastUpdate.Date
+                        DaysSinceLastUpdate = $daysSinceLastUpdate
+                        LastUpdateTitle = $lastUpdate.Title
                     }
             }
         }
         else {
             $testResult = Add-Finding -TestResult $testResult `
-                -FindingName "Last Update Time" `
+                -Name "Update History" `
                 -Status "Warning" `
-                -Description "Unable to determine last update time" `
+                -Description "No update history found" `
                 -RiskLevel "High" `
-                -AdditionalInfo @{
-                    Error = "No update history found"
+                -TechnicalDetails @{
+                    HistoryCount = $history
+                    LastUpdateDate = "Unknown"
                 }
         }
     }
     catch {
-        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Patch Management Check"
+        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Patch Management Analysis"
         $testResult = Add-Finding -TestResult $testResult `
-            -FindingName "Patch Management Error" `
+            -Name "Patch Management Error" `
             -Status "Error" `
-            -Description "Failed to check patch management: $($_.Exception.Message)" `
+            -Description "Failed to check patch management status: $($_.Exception.Message)" `
             -RiskLevel "High" `
-            -AdditionalInfo $errorInfo
+            -TechnicalDetails $errorInfo
+    }
+
+    # Export results if output path provided
+    if ($OutputPath) {
+        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
     }
 
     return $testResult

@@ -1,32 +1,71 @@
-# Import helper functions
-. "$PSScriptRoot\core\Helpers.ps1"
+# -----------------------------------------------------------------------------
+# SecureOps Module
+# -----------------------------------------------------------------------------
 
-# Import base template
-. "$PSScriptRoot\tests\Test-BaseTemplate.ps1"
+# Import core functions
+$corePath = Join-Path $PSScriptRoot "core"
+$testPath = Join-Path $PSScriptRoot "..\tests"
+
+# Import core modules
+Get-ChildItem -Path $corePath -Filter "*.ps1" | ForEach-Object {
+    . $_.FullName
+}
 
 # Import test modules
-. "$PSScriptRoot\core\Test-Dependencies.ps1"
-. "$PSScriptRoot\core\Invoke-AllSecurityTests.ps1"
-. "$PSScriptRoot\tests\Test-SuspiciousConnections.ps1"
-. "$PSScriptRoot\tests\Test-SuspiciousFiles.ps1"
-. "$PSScriptRoot\tests\Test-SuspiciousRegistry.ps1"
-. "$PSScriptRoot\tests\Test-UACStatus.ps1"
-. "$PSScriptRoot\tests\Test-WindowsServices.ps1"
+Get-ChildItem -Path $testPath -Filter "Test-*.ps1" | ForEach-Object {
+    . $_.FullName
+}
 
-# Export all functions
+# Export functions
 Export-ModuleMember -Function @(
-    'Test-Dependencies',
-    'Initialize-JsonOutput',
+    # Core Functions
+    'Initialize-TestResult',
     'Add-Finding',
-    'Write-SectionHeader',
-    'Write-ErrorInfo',
-    'Test-ProcessConnections',
-    'Test-SuspiciousConnections',
-    'Test-SuspiciousFiles',
-    'Test-SuspiciousRegistry',
-    'Test-UACStatus',
-    'Test-WindowsServices',
     'Add-Evidence',
     'Export-TestResult',
-    'Invoke-AllSecurityTests'
+    'Write-Log',
+    'Test-Dependencies',
+    'Invoke-AllSecurityTests',
+    
+    # Test Functions
+    'Test-AMSIBypass',
+    'Test-AdvancedNetworkSecurity',
+    'Test-AntivirusStatus',
+    'Test-AuthenticationControls',
+    'Test-CommandHistory',
+    'Test-CredentialProtection',
+    'Test-DefenderExclusions',
+    'Test-DefenderStatus',
+    'Test-DependencyManager',
+    'Test-DirectoryPermissions',
+    'Test-ExecutionManager',
+    'Test-FirewallStatus',
+    'Test-NetworkAdaptersAndFirewall',
+    'Test-NetworkConfiguration',
+    'Test-NetworkConnections',
+    'Test-NetworkSecurity',
+    'Test-NetworkSecurityProtocols',
+    'Test-OS_EOL',
+    'Test-PatchManagement',
+    'Test-PatchStatus',
+    'Test-PowerShellHistory',
+    'Test-PowerShellLogging',
+    'Test-PowerShellSecurity',
+    'Test-ProcessConnections',
+    'Test-Registry',
+    'Test-ResultManager',
+    'Test-SecurityIntegration',
+    'Test-StartupItems',
+    'Test-StorageEncryption',
+    'Test-SuspiciousConnections',
+    'Test-SuspiciousFiles',
+    'Test-SuspiciousProcesses',
+    'Test-SuspiciousRegistry',
+    'Test-SystemProcesses',
+    'Test-SystemSecurity',
+    'Test-SystemServices',
+    'Test-TimeConfiguration',
+    'Test-UACStatus',
+    'Test-WiFiSecurity',
+    'Test-WindowsServices'
 ) 

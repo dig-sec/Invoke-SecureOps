@@ -42,6 +42,9 @@
 function Test-StartupItems {
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$TestResult,
+        
         [Parameter()]
         [string]$OutputPath,
         
@@ -60,9 +63,6 @@ function Test-StartupItems {
         [Parameter()]
         [hashtable]$CustomComparators = @{}
     )
-    
-    # Initialize test result
-    $result = Initialize-TestResult -TestName "Test-StartupItems" -Category "Security" -Description "Analyzes system startup configuration for suspicious items"
     
     try {
         # Define registry startup locations
@@ -112,7 +112,7 @@ function Test-StartupItems {
                             $hash = Get-FileHash -Path $filePath -ErrorAction SilentlyContinue
                         }
                         
-                        Add-Finding -TestResult $result -FindingName "$($location.Description) Item" `
+                        Add-Finding -TestResult $TestResult -FindingName "$($location.Description) Item" `
                             -Status $(if ($fileExists -and $signature.Status -eq 'Valid') { "Info" } else { "Warning" }) `
                             -RiskLevel $(if ($fileExists -and $signature.Status -eq 'Valid') { "Low" } else { $location.RiskLevel }) `
                             -Description "Found startup item: $($item.Name)" `
@@ -151,30 +151,21 @@ function Test-StartupItems {
                     $signature = Get-AuthenticodeSignature -FilePath $item.FullName -ErrorAction SilentlyContinue
                     $hash = Get-FileHash -Path $item.FullName -ErrorAction SilentlyContinue
                     
-                    Add-Finding -TestResult $result -FindingName "$($folder.Description) Item" `
+                    Add-Finding -TestResult $TestResult -FindingName "$($folder.Description) Item" `
                         -Status $(if ($signature.Status -eq 'Valid') { "Info" } else { "Warning" }) `
                         -RiskLevel $(if ($signature.Status -eq 'Valid') { "Low" } else { $folder.RiskLevel }) `
                         -Description "Found startup folder item: $($item.Name)" `
                         -TechnicalDetails @{
-                            Name = $item.Name
-                            Path = $item.FullName
-                            CreationTime = $item.CreationTime
-                            LastWriteTime = $item.LastWriteTime
-                            FileHash = (Get-FileHash -Path $item.FullName -Algorithm SHA256).Hash
-                            Recommendation = "Review startup item and verify it is authorized"
-                        }
-                        -Description "Found startup item: $($item.Name)" `
-                        -AdditionalInfo @{
                             Component = "StartupItems"
                             Location = $folder.Path
-                            FileName = $item.Name
-                            FilePath = $item.FullName
+                            Name = $item.Name
+                            Path = $item.FullName
                             CreationTime = $item.CreationTime
                             LastWriteTime = $item.LastWriteTime
                             Signed = $signature.Status -eq 'Valid'
                             SignatureStatus = $signature.Status.ToString()
                             FileHash = $hash.Hash
-                            Recommendation = "Verify this startup item is authorized"
+                            Recommendation = "Review startup item and verify it is authorized"
                         }
                 }
             }
@@ -190,37 +181,35 @@ function Test-StartupItems {
         foreach ($task in $startupTasks) {
             $taskInfo = Get-ScheduledTaskInfo -TaskName $task.TaskName -ErrorAction SilentlyContinue
             
-            Add-Finding -TestResult $result -Name "Startup Scheduled Task" `
+            Add-Finding -TestResult $TestResult -FindingName "Startup Scheduled Task" `
                 -Status "Info" -RiskLevel "Medium" `
                 -Description "Found startup scheduled task: $($task.TaskName)" `
-                -AdditionalInfo @{
-                    Component = "StartupItems"
+                -TechnicalDetails @{
                     TaskName = $task.TaskName
                     TaskPath = $task.TaskPath
                     State = $task.State
-                    Author = $task.Author
                     LastRunTime = $taskInfo.LastRunTime
                     NextRunTime = $taskInfo.NextRunTime
                     LastTaskResult = $taskInfo.LastTaskResult
-                    Recommendation = "Review scheduled task configuration and verify it is authorized"
+                    Recommendation = "Review scheduled task and verify it is authorized"
                 }
         }
         
         # Export results if output path is specified
         if ($OutputPath) {
-            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+            Export-TestResult -TestResult $TestResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         }
         
-        return $result
+        return $TestResult
     }
     catch {
         Write-Error "Error during startup items test: $_"
-        Add-Finding -TestResult $result -Name "Test Error" -Status "Error" -RiskLevel "High" `
+        Add-Finding -TestResult $TestResult -FindingName "Test Error" -Status "Error" -RiskLevel "High" `
             -Description "An error occurred while checking startup items: $_" `
             -Recommendation "Check system permissions and registry access"
-        return $result
+        return $TestResult
     }
 }
 
-# Export the function
+# Export the test function
 Export-ModuleMember -Function Test-StartupItems 

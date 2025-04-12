@@ -11,7 +11,7 @@ param(
     [switch]$RunAll,
     
     [Parameter()]
-    [string]$OutputPath = ".\security_assessment.json",
+    [string]$OutputPath = ".\results\security_assessment_$(Get-Date -Format 'yyyyMMdd_HHmmss').json",
     
     [Parameter()]
     [switch]$PrettyOutput,
@@ -24,8 +24,14 @@ param(
 )
 
 # Import required modules
-$ModulePath = Join-Path $PSScriptRoot "Invoke-SecureOps.psm1"
-Import-Module $ModulePath -Force
+$ModulePath = Join-Path $PSScriptRoot "src\modules\SecureOps.psd1"
+Import-Module $ModulePath -Force -Verbose
+
+# Ensure results directory exists
+$resultsDir = Split-Path -Parent $OutputPath
+if (-not (Test-Path $resultsDir)) {
+    New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+}
 
 # Initialize assessment info
 $assessmentInfo = @{

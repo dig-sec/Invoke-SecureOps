@@ -43,27 +43,26 @@ function Test-SystemServices {
     [CmdletBinding()]
     param(
         [Parameter()]
-        [string]$OutputPath,
+        [string]$OutputPath = ".\results",
         
         [Parameter()]
         [switch]$PrettyOutput,
         
         [Parameter()]
-        [switch]$DetailedAnalysis,
-        
-        [Parameter()]
         [string]$BaselinePath,
         
         [Parameter()]
-        [switch]$CollectEvidence
+        [switch]$CollectEvidence,
+        
+        [Parameter()]
+        [hashtable]$CustomComparators = @{}
     )
     
     # Initialize test result
-    $result = Initialize-TestResult -TestName "Test-SystemServices" `
-                                  -Category "Security" `
-                                  -Description "Analyzes system services for security risks" `
-                                  -Status "Info" `
-                                  -RiskLevel "Info"
+    $result = Initialize-TestResult -TestName "System Services" `
+                                  -Category "Security Configuration" `
+                                  -Description "Checks system services for security issues" `
+                                  -RiskLevel "High"
     
     try {
         # Get all services

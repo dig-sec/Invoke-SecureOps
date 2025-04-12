@@ -11,24 +11,21 @@
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
     NestedModules = @(
         'src\modules\core\Test-Dependencies.ps1',
-        'src\modules\core\Test-SecurityIntegration.ps1',
-        'src\modules\core\Optimize-Performance.ps1',
-        'src\modules\core\Repair-SecurityIssues.ps1',
-        'src\modules\system\Test-SystemSecurity.ps1',
-        'src\modules\security\Test-PowerShellSecurity.ps1',
-        'src\modules\security\Test-DefenderStatus.ps1',
-        'src\modules\security\Test-CredentialProtection.ps1',
-        'src\modules\security\Test-SuspiciousProcesses.ps1',
-        'src\modules\network\Test-FirewallStatus.ps1',
-        'src\modules\network\Test-NetworkSecurityProtocols.ps1',
-        'src\modules\powerShell\Test-PowerShellLogging.ps1',
-        'src\modules\storage\Test-StorageEncryption.ps1'
+        'src\modules\core\Helpers.ps1',
+        'src\tests\Test-SuspiciousConnections.ps1',
+        'src\tests\Test-AMSIBypass.ps1',
+        'src\tests\Test-AuthenticationControls.ps1',
+        'src\tests\SecureOpsTests.psm1'
     )
     
     # Functions to export from this module
     FunctionsToExport = @(
-        'Test-WindowsServices',
-        'Test-Template'
+        'Test-SuspiciousConnections',
+        'Test-AMSIBypass',
+        'Test-AuthenticationControls',
+        'Add-Finding',
+        'Initialize-TestResult',
+        'Export-TestResult'
     )
     
     # Cmdlets to export from this module
@@ -38,7 +35,7 @@
     VariablesToExport = '*'
     
     # Aliases to export from this module
-    AliasesToExport = @('iso')
+    AliasesToExport = @()
     
     # Private data to pass to the module specified in RootModule/ModuleToProcess
     PrivateData = @{
@@ -49,7 +46,10 @@
     }
     
     FileList = @(
-        'tests\Test-Template.ps1',
-        'tests\Test-WindowsServices.ps1'
+        'src\tests\Test-SuspiciousConnections.ps1',
+        'src\tests\Test-AMSIBypass.ps1',
+        'src\tests\Test-AuthenticationControls.ps1',
+        'src\tests\SecureOpsTests.psm1',
+        'src\modules\core\Helpers.ps1'
     )
 } 

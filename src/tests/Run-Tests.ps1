@@ -49,277 +49,75 @@ param(
 
 # Set up error handling
 $ErrorActionPreference = "Stop"
-if ($VerboseOutput) {
-    $VerbosePreference = "Continue"
-}
+$VerbosePreference = if ($VerboseOutput) { "Continue" } else { "SilentlyContinue" }
 
-# Resolve the output path to be in the root directory
-$OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
-Write-Verbose "Using output path: $OutputPath"
+# Import the SecureOps module
+Import-Module "$PSScriptRoot\..\modules\SecureOps.psd1" -Force
 
 # Create output directory if it doesn't exist
-if ($OutputPath -and -not (Test-Path $OutputPath)) {
+if (-not (Test-Path $OutputPath)) {
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
-    Write-Verbose "Created output directory: $OutputPath"
 }
 
-# Import required modules
-$modulePath = Join-Path $PSScriptRoot "SecureOpsTests.psm1"
-if (-not (Test-Path $modulePath)) {
-    throw "Required module not found: $modulePath"
-}
-Import-Module $modulePath -Force
+# Get all test functions from the module
+$testFunctions = Get-Command -Module SecureOps -CommandType Function | Where-Object { $_.Name -like 'Test-*' }
 
-# Initialize test results container
-$script:TestResults = @{
-    StartTime = Get-Date
-    EndTime = $null
-    TotalTests = 0
-    PassedTests = 0
-    FailedTests = 0
-    SkippedTests = 0
-    Results = @()
-    Categories = @{}
-    Summary = @{}
+# Filter tests based on parameters
+if ($TestNames) {
+    $testFunctions = $testFunctions | Where-Object { $_.Name -in $TestNames }
+}
+elseif ($Categories) {
+    # TODO: Implement category filtering
+    Write-Warning "Category filtering not yet implemented"
+    return
+}
+elseif (-not $All) {
+    Write-Warning "No test selection criteria provided. Use -All to run all tests."
+    return
 }
 
-# Load test categories
-$categoriesPath = Join-Path $PSScriptRoot "TestCategories.json"
-if (-not (Test-Path $categoriesPath)) {
-    throw "Test categories configuration not found: $categoriesPath"
-}
-$categoriesConfig = Get-Content $categoriesPath | ConvertFrom-Json
-
-function Get-TestsToRun {
-    param(
-        [string[]]$TestNames,
-        [string[]]$Categories,
-        [switch]$All
-    )
-    
-    $testsToRun = @()
-    
-    if ($All) {
-        # Get all test files from the directory
-        $testFiles = Get-ChildItem -Path $PSScriptRoot -Filter "Test-*.ps1" | Where-Object { $_.Name -ne "Test-Template.ps1" }
-        $testsToRun = $testFiles | ForEach-Object { $_.BaseName }
-    }
-    elseif ($TestNames) {
-        $testsToRun = $TestNames
-    }
-    elseif ($Categories) {
-        foreach ($category in $Categories) {
-            if ($categoriesConfig.$category) {
-                $testsToRun += $categoriesConfig.$category.tests
-            }
-            else {
-                Write-Warning "Category '$category' not found in configuration"
-            }
-        }
-    }
-    
-    return $testsToRun | Select-Object -Unique
-}
-
-function Invoke-Test {
-    param(
-        [string]$TestName,
-        [hashtable]$Parameters
-    )
-    
+# Run tests
+$results = @()
+foreach ($test in $testFunctions) {
+    Write-Verbose "Running test: $($test.Name)"
     try {
-        Write-Verbose "Running test: $TestName"
+        $parameters = @{}
         
-        # Verify test function exists
-        if (-not (Get-Command $TestName -ErrorAction SilentlyContinue)) {
-            Write-Warning "Test function not found: $TestName"
-            $script:TestResults.SkippedTests++
-            return $null
-        }
+        # Only add parameters that the function accepts
+        if ($test.Parameters.ContainsKey('OutputPath')) { $parameters['OutputPath'] = $OutputPath }
+        if ($test.Parameters.ContainsKey('PrettyOutput')) { $parameters['PrettyOutput'] = $PrettyOutput }
+        if ($test.Parameters.ContainsKey('DetailedAnalysis')) { $parameters['DetailedAnalysis'] = $DetailedAnalysis }
+        if ($test.Parameters.ContainsKey('BaselinePath')) { $parameters['BaselinePath'] = $BaselinePath }
+        if ($test.Parameters.ContainsKey('CollectEvidence')) { $parameters['CollectEvidence'] = $CollectEvidence }
+        if ($test.Parameters.ContainsKey('CustomComparators')) { $parameters['CustomComparators'] = $CustomComparators }
         
-        # Execute test
-        $result = & $TestName @Parameters
+        # Invoke the test function with only the parameters it accepts
+        $result = & $test.Name @parameters
         
         if ($result) {
-            $script:TestResults.Results += $result
-            $script:TestResults.TotalTests++
+            $results += $result
             
-            if ($result.Status -eq "Pass") {
-                $script:TestResults.PassedTests++
-            }
-            elseif ($result.Status -in @("Error", "Critical")) {
-                $script:TestResults.FailedTests++
-            }
-            
-            # Export individual test result
+            # Export individual test results
             if ($OutputPath) {
-                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-                $resultPath = Join-Path $OutputPath "${TestName}_${timestamp}.json"
-                $result | ConvertTo-Json -Depth 10 | Set-Content $resultPath
-                Write-Verbose "Results exported to: $resultPath"
+                $outputFile = Join-Path $OutputPath "$($test.Name)_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
+                Export-TestResult -TestResult $result -OutputPath $outputFile -PrettyOutput:$PrettyOutput
+                Write-Verbose "Results exported to: $outputFile"
             }
         }
-        
-        return $result
     }
     catch {
-        Write-Error "Error running test $TestName : $_"
-        $script:TestResults.FailedTests++
+        Write-Warning "Error running test $($test.Name): $_"
         if (-not $ContinueOnFailure) {
             throw
         }
-        return $null
     }
 }
 
-function Export-TestReport {
-    param(
-        [string]$OutputPath,
-        [string]$Format = "HTML"
-    )
-    
-    if (-not $OutputPath) {
-        Write-Warning "No output path specified for report"
-        return
-    }
-    
-    $reportPath = Join-Path $OutputPath "test_report.$($Format.ToLower())"
-    
-    switch ($Format.ToLower()) {
-        "html" {
-            $htmlReport = @"
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Security Test Report</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .summary { margin-bottom: 20px; }
-        .test-result { margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; }
-        .pass { background-color: #dff0d8; }
-        .fail { background-color: #f2dede; }
-        .warning { background-color: #fcf8e3; }
-        .error { background-color: #f2dede; }
-        .critical { background-color: #d9534f; color: white; }
-        .info { background-color: #d9edf7; }
-    </style>
-</head>
-<body>
-    <h1>Security Test Report</h1>
-    <div class="summary">
-        <h2>Summary</h2>
-        <p>Start Time: $($script:TestResults.StartTime)</p>
-        <p>End Time: $($script:TestResults.EndTime)</p>
-        <p>Total Tests: $($script:TestResults.TotalTests)</p>
-        <p>Passed: $($script:TestResults.PassedTests)</p>
-        <p>Failed: $($script:TestResults.FailedTests)</p>
-        <p>Skipped: $($script:TestResults.SkippedTests)</p>
-    </div>
-"@
-            
-            foreach ($result in $script:TestResults.Results) {
-                if (-not $result) { continue }
-                
-                $status = if ($result.Status) { $result.Status.ToLower() } else { "info" }
-                $htmlReport += @"
-    <div class="test-result $status">
-        <h3>$($result.TestName)</h3>
-        <p>Status: $($result.Status)</p>
-        <p>Risk Level: $($result.RiskLevel)</p>
-        <p>Description: $($result.Description)</p>
-        <h4>Findings:</h4>
-        <ul>
-"@
-                
-                if ($result.Findings) {
-                    foreach ($finding in $result.Findings) {
-                        $htmlReport += @"
-            <li>
-                <strong>$($finding.Name)</strong><br>
-                Status: $($finding.Status)<br>
-                Risk Level: $($finding.RiskLevel)<br>
-                Description: $($finding.Description)<br>
-                $(if ($finding.Recommendation) { "Recommendation: $($finding.Recommendation)<br>" })
-            </li>
-"@
-                    }
-                }
-                else {
-                    $htmlReport += @"
-            <li>No findings reported</li>
-"@
-                }
-                
-                $htmlReport += @"
-        </ul>
-    </div>
-"@
-            }
-            
-            $htmlReport += @"
-</body>
-</html>
-"@
-            
-            $htmlReport | Set-Content $reportPath -Force
-            Write-Verbose "Report exported to: $reportPath"
-        }
-        
-        "json" {
-            $script:TestResults | ConvertTo-Json -Depth 10 | Set-Content $reportPath -Force
-            Write-Verbose "Report exported to: $reportPath"
-        }
-        
-        default {
-            Write-Warning "Unsupported report format: $Format"
-        }
-    }
+# Generate report if requested
+if ($GenerateReport -and $results) {
+    $reportPath = Join-Path $OutputPath "security_assessment_report.$($ReportFormat.ToLower())"
+    Export-TestResults -TestResults $results -OutputPath $reportPath -Format $ReportFormat
+    Write-Verbose "Report generated: $reportPath"
 }
 
-# Main execution
-try {
-    Write-Verbose "Starting test execution..."
-    
-    # Get tests to run
-    $testsToRun = Get-TestsToRun -TestNames $TestNames -Categories $Categories -All:$All
-    
-    if (-not $testsToRun) {
-        throw "No tests selected for execution"
-    }
-    
-    Write-Verbose "Selected tests: $($testsToRun -join ', ')"
-    
-    # Prepare test parameters
-    $testParams = @{
-        OutputPath = $OutputPath
-        PrettyOutput = $PrettyOutput
-        DetailedAnalysis = $DetailedAnalysis
-        BaselinePath = $BaselinePath
-        CollectEvidence = $CollectEvidence
-    }
-    
-    # Execute tests
-    foreach ($test in $testsToRun) {
-        if ($Parallel) {
-            # TODO: Implement parallel execution
-            Write-Warning "Parallel execution not yet implemented"
-        }
-        else {
-            Invoke-Test -TestName $test -Parameters $testParams
-        }
-    }
-    
-    # Update end time
-    $script:TestResults.EndTime = Get-Date
-    
-    # Generate report if requested
-    if ($GenerateReport) {
-        Export-TestReport -OutputPath $OutputPath -Format $ReportFormat
-    }
-    
-    Write-Verbose "Test execution completed"
-}
-catch {
-    Write-Error "Error during test execution: $_"
-    throw
-} 
+return $results 

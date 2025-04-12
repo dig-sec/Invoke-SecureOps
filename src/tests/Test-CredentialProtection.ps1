@@ -15,101 +15,100 @@ function Test-CredentialProtection {
         [string]$BaselinePath,
         
         [Parameter()]
-        [switch]$CollectEvidence,
-        
-        [Parameter()]
-        [hashtable]$CustomComparators = @{}
+        [switch]$CollectEvidence
     )
 
     Write-SectionHeader "Credential Protection Check"
     Write-Output "Analyzing credential protection settings..."
 
-    # Initialize JSON output object using common function
-    $credentialInfo = Initialize-JsonOutput -Category "CredentialProtection" -RiskLevel "High" -ActionLevel "Review"
-
+    # Initialize test result using helper function
+    $testResult = Initialize-TestResult -TestName "Test-CredentialProtection" -Category "Security" -Description "Credential protection security check" -RiskLevel "High"
+    
     try {
-        # Check Credential Guard
-        $credentialGuard = Get-CimInstance -ClassName Win32_DeviceGuard -ErrorAction SilentlyContinue
+        # Check Credential Guard status
+        $deviceGuard = Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\Microsoft\Windows\DeviceGuard -ErrorAction Stop
         
-        # Check LSA Protection
-        $lsaProtection = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "RunAsPPL" -ErrorAction SilentlyContinue
-        
-        # Check Credential Manager service
-        $credentialManager = Get-Service -Name "CredentialManager" -ErrorAction SilentlyContinue
-        
-        $credentialInfo.CredentialGuard = @{
-            SecurityServicesRunning = $credentialGuard.SecurityServicesRunning
-            VirtualizationBasedSecurityStatus = $credentialGuard.VirtualizationBasedSecurityStatus
+        if ($deviceGuard.SecurityServicesConfigured -contains 1) {
+            if ($deviceGuard.SecurityServicesRunning -contains 1) {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -Name "Credential Guard Status" `
+                    -Status "Pass" `
+                    -Description "Credential Guard is configured and running" `
+                    -RiskLevel "Info" `
+                    -TechnicalDetails @{
+                        SecurityServicesConfigured = $deviceGuard.SecurityServicesConfigured
+                        SecurityServicesRunning = $deviceGuard.SecurityServicesRunning
+                        VirtualizationBasedSecurityStatus = $deviceGuard.VirtualizationBasedSecurityStatus
+                    }
+            }
+            else {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -Name "Credential Guard Status" `
+                    -Status "Warning" `
+                    -Description "Credential Guard is configured but not running" `
+                    -RiskLevel "High" `
+                    -TechnicalDetails @{
+                        SecurityServicesConfigured = $deviceGuard.SecurityServicesConfigured
+                        SecurityServicesRunning = $deviceGuard.SecurityServicesRunning
+                        VirtualizationBasedSecurityStatus = $deviceGuard.VirtualizationBasedSecurityStatus
+                    }
+            }
         }
-        $credentialInfo.LSAProtection = @{
-            RunAsPPL = $lsaProtection.RunAsPPL
-        }
-        $credentialInfo.CredentialManager = @{
-            Status = $credentialManager.Status
-        }
-
-        # Check Credential Guard
-        if ($credentialGuard.SecurityServicesRunning -contains 1) {
-            Add-Finding -TestResult $credentialInfo -FindingName "Credential Guard" -Status "Pass" `
-                -Description "Credential Guard is enabled" -RiskLevel "Info" `
-                -AdditionalInfo @{
-                    Component = "CredentialGuard"
-                    Status = "Enabled"
-                    SecurityServices = $credentialGuard.SecurityServicesRunning
-                }
-        } else {
-            Add-Finding -TestResult $credentialInfo -FindingName "Credential Guard" -Status "Warning" `
-                -Description "Credential Guard is not enabled" -RiskLevel "High" `
-                -AdditionalInfo @{
-                    Component = "CredentialGuard"
-                    Status = "Disabled"
-                    SecurityServices = $credentialGuard.SecurityServicesRunning
-                }
-        }
-
-        # Check LSA Protection
-        if ($lsaProtection.RunAsPPL -eq 1) {
-            Add-Finding -TestResult $credentialInfo -FindingName "LSA Protection" -Status "Pass" `
-                -Description "LSA Protection is enabled" -RiskLevel "Info" `
-                -AdditionalInfo @{
-                    Component = "LSAProtection"
-                    Status = "Enabled"
-                    RunAsPPL = $lsaProtection.RunAsPPL
-                }
-        } else {
-            Add-Finding -TestResult $credentialInfo -FindingName "LSA Protection" -Status "Warning" `
-                -Description "LSA Protection is not enabled" -RiskLevel "High" `
-                -AdditionalInfo @{
-                    Component = "LSAProtection"
-                    Status = "Disabled"
-                    RunAsPPL = $lsaProtection.RunAsPPL
+        else {
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "Credential Guard Status" `
+                -Status "Warning" `
+                -Description "Credential Guard is not configured" `
+                -RiskLevel "High" `
+                -TechnicalDetails @{
+                    SecurityServicesConfigured = $deviceGuard.SecurityServicesConfigured
+                    SecurityServicesRunning = $deviceGuard.SecurityServicesRunning
+                    VirtualizationBasedSecurityStatus = $deviceGuard.VirtualizationBasedSecurityStatus
                 }
         }
 
-        # Check Credential Manager service
-        if ($credentialManager.Status -eq "Running") {
-            Add-Finding -TestResult $credentialInfo -FindingName "Credential Manager" -Status "Pass" `
-                -Description "Credential Manager service is running" -RiskLevel "Info" `
-                -AdditionalInfo @{
-                    Component = "CredentialManager"
-                    Status = "Running"
+        # Check WDigest authentication
+        $wdigestKey = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest" -Name "UseLogonCredential" -ErrorAction SilentlyContinue
+        
+        if ($null -eq $wdigestKey -or $wdigestKey.UseLogonCredential -eq 0) {
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "WDigest Authentication" `
+                -Status "Pass" `
+                -Description "WDigest authentication is properly configured" `
+                -RiskLevel "Info" `
+                -TechnicalDetails @{
+                    UseLogonCredential = $wdigestKey.UseLogonCredential
+                    KeyExists = $null -ne $wdigestKey
+                }
+        }
+        else {
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "WDigest Authentication" `
+                -Status "Warning" `
+                -Description "WDigest authentication is enabled, which may store credentials in memory" `
+                -RiskLevel "High" `
+                -TechnicalDetails @{
+                    UseLogonCredential = $wdigestKey.UseLogonCredential
+                    KeyExists = $true
                 }
         }
     }
     catch {
         $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Credential Protection Analysis"
-        Add-Finding -TestResult $credentialInfo -FindingName "Credential Protection" -Status "Error" `
-            -Description "Failed to check credential protection: $($_.Exception.Message)" -RiskLevel "High" `
-            -AdditionalInfo $errorInfo
+        $testResult = Add-Finding -TestResult $testResult `
+            -Name "Credential Protection Error" `
+            -Status "Error" `
+            -Description "Failed to check credential protection: $($_.Exception.Message)" `
+            -RiskLevel "High" `
+            -TechnicalDetails $errorInfo
     }
 
-    # Export results using common function
+    # Export results if output path provided
     if ($OutputPath) {
-        Export-TestResult -TestResult $credentialInfo -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
-        Write-Output "Results exported to: $OutputPath"
+        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
     }
 
-    return $credentialInfo
+    return $testResult
 }
 
 # Export the function

@@ -1,91 +1,115 @@
 # -----------------------------------------------------------------------------
-# Scan Generator
+# Security Scan Generator
 # -----------------------------------------------------------------------------
 
-param (
-    [switch]$Verbose,
-    [switch]$ConvertTests
+param(
+    [string]$OutputPath = ".\results",
+    [switch]$PrettyOutput,
+    [switch]$DetailedAnalysis
 )
 
+# Import the module
+$ErrorActionPreference = 'Stop'
+$VerbosePreference = 'Continue'
+
 # Get the script directory
-$scriptDir = $PSScriptRoot
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$modulePath = Join-Path $scriptDir "Invoke-SecureOps.psd1"
 
-# Function to convert a test function to the standalone format
-function Convert-TestToStandalone {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$TestName,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$Category,
-        
-        [Parameter(Mandatory = $false)]
-        [string]$RiskLevel = "Medium",
-        
-        [Parameter(Mandatory = $false)]
-        [string]$ActionLevel = "Review"
-    )
-    
-    Write-Output "Converting test: $TestName"
-    
-    # Create the output directory if it doesn't exist
-    $outputDir = Join-Path $scriptDir "src\modules\$Category"
-    if (-not (Test-Path $outputDir)) {
-        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+# Import module
+Import-Module $modulePath -Force -Verbose
+
+# Create timestamp for unique results
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+# Ensure output path exists and get its full path
+$OutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
+if (-not (Test-Path $OutputPath)) {
+    New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
+}
+
+$resultsPath = Join-Path $OutputPath "scan_$timestamp"
+
+# Create results directory if it doesn't exist
+if (-not (Test-Path $resultsPath)) {
+    New-Item -ItemType Directory -Path $resultsPath -Force | Out-Null
+}
+
+Write-Host "Starting security scan at $(Get-Date)" -ForegroundColor Green
+
+# Run various security tests
+$tests = @(
+    @{
+        Name = "Test-SuspiciousConnections"
+        Params = @{
+            OutputPath = Join-Path $resultsPath "suspicious_connections.json"
+            PrettyOutput = [bool]$PrettyOutput
+            DetailedAnalysis = [bool]$DetailedAnalysis
+            CollectEvidence = $true
+        }
+    },
+    @{
+        Name = "Test-AMSIBypass"
+        Params = @{
+            OutputPath = Join-Path $resultsPath "amsi_bypass.json"
+            PrettyOutput = [bool]$PrettyOutput
+            DetailedAnalysis = [bool]$DetailedAnalysis
+            CollectEvidence = $true
+        }
+    },
+    @{
+        Name = "Test-AuthenticationControls"
+        Params = @{
+            OutputPath = Join-Path $resultsPath "auth_controls.json"
+            PrettyOutput = [bool]$PrettyOutput
+            DetailedAnalysis = [bool]$DetailedAnalysis
+            CollectEvidence = $true
+        }
     }
-    
-    # Create the output file
-    $outputFile = Join-Path $outputDir "$TestName.ps1"
-    
-    # Read the template
-    $templatePath = Join-Path $scriptDir "src\modules\core\Test-StandardTemplate.ps1"
-    $template = Get-Content -Path $templatePath -Raw
-    
-    # Replace the template function name with the actual test name
-    $template = $template -replace "function Test-StandardTemplate", "function $TestName"
-    $template = $template -replace "Test-StandardTemplate", $TestName
-    $template = $template -replace "Category = `"Standard`"", "Category = `"$Category`""
-    $template = $template -replace "RiskLevel = `"Medium`"", "RiskLevel = `"$RiskLevel`""
-    $template = $template -replace "ActionLevel = `"Review`"", "ActionLevel = `"$ActionLevel`""
-    
-    # Write the template to the output file
-    $template | Out-File -FilePath $outputFile -Force
-    
-    Write-Output "Created standalone test: $outputFile"
-}
+)
 
-# Run the collection script
-Write-Output "Running collection script..."
-& "$scriptDir\collection.ps1" -OutputFile "$scriptDir\scan.ps1" -Verbose:$Verbose
-
-# Check if the scan.ps1 file was created
-if (Test-Path "$scriptDir\scan.ps1") {
-    Write-Output "`nScan script generated successfully: $scriptDir\scan.ps1"
-    Write-Output "You can now run the scan with: .\scan.ps1 -Verbose"
-}
-else {
-    Write-Error "Failed to generate scan.ps1 file"
-}
-
-# Convert tests if requested
-if ($ConvertTests) {
-    Write-Output "`nConverting tests to standalone format..."
-    
-    # Define tests to convert
-    $testsToConvert = @(
-        @{Name = "Test-PowerShellSecurity"; Category = "PowerShell"; RiskLevel = "High"; ActionLevel = "Review"},
-        @{Name = "Test-DefenderStatus"; Category = "Security"; RiskLevel = "High"; ActionLevel = "Review"},
-        @{Name = "Test-CredentialProtection"; Category = "Security"; RiskLevel = "High"; ActionLevel = "Review"},
-        @{Name = "Test-SuspiciousProcesses"; Category = "Security"; RiskLevel = "High"; ActionLevel = "Review"},
-        @{Name = "Test-FirewallStatus"; Category = "Network"; RiskLevel = "High"; ActionLevel = "Review"},
-        @{Name = "Test-UACStatus"; Category = "Security"; RiskLevel = "High"; ActionLevel = "Review"},
-        @{Name = "Test-NetworkSecurityProtocols"; Category = "Network"; RiskLevel = "Medium"; ActionLevel = "Review"},
-        @{Name = "Test-WindowsServices"; Category = "System"; RiskLevel = "Medium"; ActionLevel = "Review"}
-    )
-    
-    foreach ($test in $testsToConvert) {
-        Convert-TestToStandalone -TestName $test.Name -Category $test.Category -RiskLevel $test.RiskLevel -ActionLevel $test.ActionLevel
+# Run each test
+foreach ($test in $tests) {
+    Write-Host "Running $($test.Name)..." -ForegroundColor Cyan
+    try {
+        $params = $test.Params
+        & $test.Name @params
+        Write-Host "Completed $($test.Name)" -ForegroundColor Green
     }
-    
-    Write-Output "`nTest conversion complete. You can now update the individual test files with their specific implementation."
-} 
+    catch {
+        Write-Error "Error running $($test.Name): $_"
+        continue
+    }
+}
+
+# Generate summary report
+$summaryPath = Join-Path $resultsPath "summary.json"
+$summary = @{
+    ScanTime = Get-Date
+    Tests = @()
+}
+
+foreach ($test in $tests) {
+    $resultFile = $test.Params.OutputPath
+    if (Test-Path $resultFile) {
+        try {
+            $result = Get-Content $resultFile | ConvertFrom-Json
+            $summary.Tests += @{
+                Name = $test.Name
+                Status = $result.Status
+                RiskLevel = $result.RiskLevel
+                FindingsCount = ($result.Findings | Measure-Object).Count
+            }
+        }
+        catch {
+            Write-Warning "Could not process results for $($test.Name): $_"
+        }
+    }
+}
+
+# Save summary
+$summary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath
+
+Write-Host "`nScan completed at $(Get-Date)" -ForegroundColor Green
+Write-Host "Results saved to: $resultsPath" -ForegroundColor Yellow
+Write-Host "Summary report: $summaryPath" -ForegroundColor Yellow 

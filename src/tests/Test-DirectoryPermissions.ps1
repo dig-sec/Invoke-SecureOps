@@ -6,7 +6,7 @@ function Test-DirectoryPermissions {
     [CmdletBinding()]
     param (
         [Parameter()]
-        [string]$OutputPath,
+        [string]$OutputPath = ".\results",
         
         [Parameter()]
         [switch]$PrettyOutput,
@@ -25,7 +25,10 @@ function Test-DirectoryPermissions {
     Write-Output "Analyzing directory permissions..."
 
     # Initialize test result using helper function
-    $testResult = Initialize-JsonOutput -Category "DirectoryPermissions" -RiskLevel "High"
+    $testResult = Initialize-TestResult -TestName "Directory Permissions" `
+                                     -Category "Security Configuration" `
+                                     -Description "Checks critical directories for secure permissions" `
+                                     -RiskLevel "High"
     
     try {
         # Define critical directories to check
@@ -45,79 +48,59 @@ function Test-DirectoryPermissions {
                 $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
                 $adminRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
                 
-                $isWritable = $false
+                # Check if current user has admin rights
+                $isAdmin = $principal.IsInRole($adminRole)
+                
+                # Analyze ACL
+                $hasInsecurePermissions = $false
+                $insecureUsers = @()
+                
                 foreach ($access in $acl.Access) {
-                    if ($access.IdentityReference.Value -eq $identity.Name -or 
-                        $access.IdentityReference.Value -eq "BUILTIN\Users" -or 
-                        $access.IdentityReference.Value -eq "Everyone") {
-                        if ($access.FileSystemRights -match "Modify|FullControl|Write|WriteData|AppendData|ChangePermissions|TakeOwnership") {
-                            $isWritable = $true
-                            break
-                        }
+                    if ($access.IdentityReference.Value -notmatch "^(NT AUTHORITY|BUILTIN|S-1-5-32)") {
+                        $hasInsecurePermissions = $true
+                        $insecureUsers += $access.IdentityReference.Value
                     }
                 }
                 
-                if ($isWritable) {
+                if ($hasInsecurePermissions) {
                     $testResult = Add-Finding -TestResult $testResult `
-                        -FindingName "Directory Permission Check - $dir" `
-                        -Status "Warning" `
-                        -Description "Directory $dir is writable by non-administrators" `
-                        -RiskLevel "High" `
-                        -AdditionalInfo @{
-                            Path = $dir
-                            CurrentUser = $identity.Name
-                            IsAdmin = $principal.IsInRole($adminRole)
-                            ACL = $acl.Access | ForEach-Object {
-                                @{
-                                    Identity = $_.IdentityReference.Value
-                                    Rights = $_.FileSystemRights
-                                    Type = $_.AccessControlType
-                                }
-                            }
-                        }
+                                           -FindingName "Insecure Directory Permissions" `
+                                           -Status "Warning" `
+                                           -RiskLevel "Medium" `
+                                           -Description "Directory $dir has potentially insecure permissions" `
+                                           -Recommendation "Review and restrict permissions to trusted users/groups only" `
+                                           -TechnicalDetails @{
+                                               Directory = $dir
+                                               InsecureUsers = $insecureUsers
+                                               CurrentUserIsAdmin = $isAdmin
+                                           }
                 }
-                else {
-                    $testResult = Add-Finding -TestResult $testResult `
-                        -FindingName "Directory Permission Check - $dir" `
-                        -Status "Pass" `
-                        -Description "Directory $dir has appropriate permissions" `
-                        -RiskLevel "Info" `
-                        -AdditionalInfo @{
-                            Path = $dir
-                            CurrentUser = $identity.Name
-                            IsAdmin = $principal.IsInRole($adminRole)
-                        }
+                
+                if ($CollectEvidence) {
+                    $testResult = Add-Evidence -TestResult $testResult `
+                                            -FindingName "Directory Permissions Evidence" `
+                                            -EvidenceType "Configuration" `
+                                            -EvidenceData $acl `
+                                            -Description "ACL information for $dir"
                 }
-            }
-            else {
-                $testResult = Add-Finding -TestResult $testResult `
-                    -FindingName "Directory Permission Check - $dir" `
-                    -Status "Info" `
-                    -Description "Directory $dir does not exist" `
-                    -RiskLevel "Info" `
-                    -AdditionalInfo @{
-                        Path = $dir
-                        Exists = $false
-                    }
             }
         }
+        
+        return $testResult
     }
     catch {
-        $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Directory Permissions Analysis"
+        Write-Error "Error during directory permissions test: $_"
         $testResult = Add-Finding -TestResult $testResult `
-            -FindingName "Directory Permissions Error" `
-            -Status "Error" `
-            -Description "Failed to check directory permissions: $($_.Exception.Message)" `
-            -RiskLevel "High" `
-            -AdditionalInfo $errorInfo
+                                -FindingName "Test Error" `
+                                -Status "Error" `
+                                -RiskLevel "High" `
+                                -Description "Error occurred during directory permissions test" `
+                                -TechnicalDetails @{
+                                    Error = $_.Exception.Message
+                                    StackTrace = $_.ScriptStackTrace
+                                }
+        return $testResult
     }
-
-    # Export results if output path provided
-    if ($OutputPath) {
-        Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
-    }
-
-    return $testResult
 }
 
 # Export the function

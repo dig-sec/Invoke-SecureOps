@@ -15,168 +15,112 @@ function Test-DefenderStatus {
         [string]$BaselinePath,
         
         [Parameter()]
-        [switch]$CollectEvidence,
-        
-        [Parameter()]
-        [hashtable]$CustomComparators = @{}
+        [switch]$CollectEvidence
     )
-    
-    Write-SectionHeader "Windows Defender Status Analysis"
+
+    Write-SectionHeader "Windows Defender Status Check"
     Write-Output "Analyzing Windows Defender status..."
 
-    # Initialize test result
-    $testResult = Initialize-TestResult -TestName "Test-DefenderStatus" `
-                                      -Category "Security" `
-                                      -Description "Analyzes Windows Defender antivirus protection status"
+    # Initialize test result using helper function
+    $testResult = Initialize-TestResult -TestName "Test-DefenderStatus" -Category "Defender" -Description "Windows Defender status check" -RiskLevel "High"
     
     try {
         # Get Windows Defender status
         $defenderStatus = Get-MpComputerStatus -ErrorAction Stop
         
-        # Collect baseline data if provided
-        $baselineData = $null
-        if ($BaselinePath -and (Test-Path $BaselinePath)) {
-            $baselineData = Get-Content -Path $BaselinePath -Raw | ConvertFrom-Json
-        }
-        
-        # Check antivirus protection
-        if (-not $defenderStatus.AntivirusEnabled) {
-            Add-Finding -TestResult $testResult `
-                       -FindingName "Antivirus Protection Status" `
-                       -Status "Warning" `
-                       -Description "Windows Defender antivirus protection is not enabled" `
-                       -RiskLevel "High" `
-                       -AdditionalInfo @{
-                           Status = $defenderStatus.AntivirusEnabled
-                           LastUpdate = $defenderStatus.AntivirusSignatureAge
-                           Recommendation = "Enable Windows Defender antivirus protection"
-                       }
-        }
-        else {
-            Add-Finding -TestResult $testResult `
-                       -FindingName "Antivirus Protection Status" `
-                       -Status "Pass" `
-                       -Description "Windows Defender antivirus protection is enabled" `
-                       -RiskLevel "Info" `
-                       -AdditionalInfo @{
-                           Status = $defenderStatus.AntivirusEnabled
-                           LastUpdate = $defenderStatus.AntivirusSignatureAge
-                       }
-        }
-        
-        # Check real-time protection
+        # Check if real-time protection is enabled
         if (-not $defenderStatus.RealTimeProtectionEnabled) {
-            Add-Finding -TestResult $testResult `
-                       -FindingName "Real-time Protection Status" `
-                       -Status "Warning" `
-                       -Description "Windows Defender real-time protection is not enabled" `
-                       -RiskLevel "High" `
-                       -AdditionalInfo @{
-                           Status = $defenderStatus.RealTimeProtectionEnabled
-                           LastUpdate = $defenderStatus.AntivirusSignatureAge
-                           Recommendation = "Enable Windows Defender real-time protection"
-                       }
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "Real-Time Protection" `
+                -Status "Warning" `
+                -Description "Real-time protection is disabled" `
+                -RiskLevel "High" `
+                -TechnicalDetails @{
+                    RealTimeProtectionEnabled = $defenderStatus.RealTimeProtectionEnabled
+                    RealTimeProtectionState = $defenderStatus.RealTimeProtectionState
+                }
         }
         else {
-            Add-Finding -TestResult $testResult `
-                       -FindingName "Real-time Protection Status" `
-                       -Status "Pass" `
-                       -Description "Windows Defender real-time protection is enabled" `
-                       -RiskLevel "Info" `
-                       -AdditionalInfo @{
-                           Status = $defenderStatus.RealTimeProtectionEnabled
-                           LastUpdate = $defenderStatus.AntivirusSignatureAge
-                       }
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "Real-Time Protection" `
+                -Status "Pass" `
+                -Description "Real-time protection is enabled" `
+                -RiskLevel "Info" `
+                -TechnicalDetails @{
+                    RealTimeProtectionEnabled = $defenderStatus.RealTimeProtectionEnabled
+                    RealTimeProtectionState = $defenderStatus.RealTimeProtectionState
+                }
         }
-        
-        # Check signature age
-        $currentDate = Get-Date
-        try {
-            $signatureAge = $defenderStatus.AntivirusSignatureAge
-            
-            if ($signatureAge -gt 7) {
-                Add-Finding -TestResult $testResult `
-                           -FindingName "Signature Age Status" `
-                           -Status "Warning" `
-                           -Description "Windows Defender antivirus signatures are $signatureAge days old" `
-                           -RiskLevel "Medium" `
-                           -AdditionalInfo @{
-                               SignatureAge = $signatureAge
-                               LastUpdate = $defenderStatus.AntivirusSignatureLastUpdated
-                               Recommendation = "Update Windows Defender virus definitions"
-                           }
-            }
-            else {
-                Add-Finding -TestResult $testResult `
-                           -FindingName "Signature Age Status" `
-                           -Status "Pass" `
-                           -Description "Windows Defender antivirus signatures are up to date" `
-                           -RiskLevel "Info" `
-                           -AdditionalInfo @{
-                               SignatureAge = $signatureAge
-                               LastUpdate = $defenderStatus.AntivirusSignatureLastUpdated
-                           }
-            }
+
+        # Check antivirus signature status
+        $signatureAge = $defenderStatus.AntivirusSignatureAge
+        if ($signatureAge -gt 7) {
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "Antivirus Signatures" `
+                -Status "Warning" `
+                -Description "Antivirus signatures are more than 7 days old" `
+                -RiskLevel "High" `
+                -TechnicalDetails @{
+                    SignatureAge = $signatureAge
+                    SignatureLastUpdated = $defenderStatus.AntivirusSignatureLastUpdated
+                    SignatureVersion = $defenderStatus.AntivirusSignatureVersion
+                }
         }
-        catch {
-            Add-Finding -TestResult $testResult `
-                       -FindingName "Signature Age Check" `
-                       -Status "Warning" `
-                       -Description "Could not determine signature age: $($_.Exception.Message)" `
-                       -RiskLevel "Medium" `
-                       -AdditionalInfo @{
-                           LastUpdate = $defenderStatus.AntivirusSignatureLastUpdated
-                           Error = $_.Exception.Message
-                           Recommendation = "Verify Windows Defender is functioning correctly"
-                       }
+        else {
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "Antivirus Signatures" `
+                -Status "Pass" `
+                -Description "Antivirus signatures are up to date" `
+                -RiskLevel "Info" `
+                -TechnicalDetails @{
+                    SignatureAge = $signatureAge
+                    SignatureLastUpdated = $defenderStatus.AntivirusSignatureLastUpdated
+                    SignatureVersion = $defenderStatus.AntivirusSignatureVersion
+                }
         }
-        
-        # Compare with baseline if available
-        if ($baselineData) {
-            $comparison = Compare-BaselineData -BaselineData $baselineData `
-                                             -CurrentData $defenderStatus `
-                                             -CustomComparators $CustomComparators
-            
-            if ($comparison.Changes.Count -gt 0) {
-                Add-Finding -TestResult $testResult `
-                           -FindingName "Configuration Changes" `
-                           -Status "Warning" `
-                           -Description "Changes detected in Windows Defender configuration compared to baseline" `
-                           -RiskLevel "Medium" `
-                           -AdditionalInfo @{
-                               Changes = $comparison.Changes
-                               Recommendation = "Review configuration changes and update baseline if approved"
-                           }
-            }
-            else {
-                Add-Finding -TestResult $testResult `
-                           -FindingName "Configuration Changes" `
-                           -Status "Pass" `
-                           -Description "No changes detected in Windows Defender configuration" `
-                           -RiskLevel "Info" `
-                           -AdditionalInfo @{
-                               BaselineComparison = "Matches baseline configuration"
-                           }
-            }
+
+        # Check quick scan status
+        $lastQuickScan = $defenderStatus.QuickScanEndTime
+        if ($lastQuickScan -lt (Get-Date).AddDays(-7)) {
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "Quick Scan Status" `
+                -Status "Warning" `
+                -Description "No quick scan has been performed in the last 7 days" `
+                -RiskLevel "Medium" `
+                -TechnicalDetails @{
+                    LastQuickScan = $lastQuickScan
+                    QuickScanAge = ((Get-Date) - $lastQuickScan).Days
+                }
+        }
+        else {
+            $testResult = Add-Finding -TestResult $testResult `
+                -Name "Quick Scan Status" `
+                -Status "Pass" `
+                -Description "Quick scan has been performed recently" `
+                -RiskLevel "Info" `
+                -TechnicalDetails @{
+                    LastQuickScan = $lastQuickScan
+                    QuickScanAge = ((Get-Date) - $lastQuickScan).Days
+                }
         }
     }
     catch {
         $errorInfo = Write-ErrorInfo -ErrorRecord $_ -Context "Windows Defender Status Analysis"
-        Add-Finding -TestResult $testResult `
-                   -FindingName "Analysis Error" `
-                   -Status "Error" `
-                   -Description "Failed to analyze Windows Defender status: $($_.Exception.Message)" `
-                   -RiskLevel "High" `
-                   -AdditionalInfo $errorInfo
+        $testResult = Add-Finding -TestResult $testResult `
+            -Name "Defender Status Error" `
+            -Status "Error" `
+            -Description "Failed to check Windows Defender status: $($_.Exception.Message)" `
+            -RiskLevel "High" `
+            -TechnicalDetails $errorInfo
     }
-    
+
     # Export results if output path provided
     if ($OutputPath) {
         Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
     }
-    
+
     return $testResult
 }
 
-# Export function
+# Export the function
 Export-ModuleMember -Function Test-DefenderStatus 

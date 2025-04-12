@@ -65,8 +65,11 @@ function Add-Finding {
         [Parameter(Mandatory)]
         [hashtable]$TestResult,
         
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ParameterSetName = "Name")]
         [string]$Name,
+        
+        [Parameter(Mandatory, ParameterSetName = "FindingName")]
+        [string]$FindingName,
         
         [Parameter()]
         [string]$Status = "Info",
@@ -90,11 +93,29 @@ function Add-Finding {
         [hashtable]$TechnicalDetails = @{},
         
         [Parameter()]
-        [hashtable]$CustomData = @{}
+        [hashtable]$CustomData = @{},
+        
+        [Parameter()]
+        [hashtable]$AdditionalInfo = @{},
+        
+        [Parameter()]
+        [string]$CheckName = ""
     )
     
+    $findingName = if ($PSCmdlet.ParameterSetName -eq "Name") { $Name } else { $FindingName }
+    
+    # Merge AdditionalInfo into TechnicalDetails if provided
+    if ($AdditionalInfo.Count -gt 0) {
+        $TechnicalDetails = $AdditionalInfo
+    }
+    
+    # Use CheckName as part of finding name if provided
+    if ($CheckName) {
+        $findingName = "$CheckName - $findingName"
+    }
+    
     $finding = @{
-        Name = $Name
+        Name = $findingName
         Status = $Status
         RiskLevel = $RiskLevel
         Description = $Description

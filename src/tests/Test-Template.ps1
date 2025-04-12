@@ -4,11 +4,11 @@
 
 <#
 .SYNOPSIS
-    Template for security assessment test modules.
+    Template for creating new security test modules.
 
 .DESCRIPTION
-    This template provides a standardized structure for all security assessment test modules.
-    It includes proper parameter handling, error handling, and result management.
+    This template provides a standardized structure for creating new security test modules.
+    It includes common parameters, error handling, and logging functionality.
 
 .PARAMETER OutputPath
     The path where the test results will be exported.
@@ -32,17 +32,17 @@
     [hashtable] A hashtable containing test results and findings.
 
 .EXAMPLE
-    Test-SecurityFeature -OutputPath ".\results.json" -PrettyOutput
+    Test-NewSecurityCheck -OutputPath ".\results.json" -PrettyOutput
 
 .NOTES
     Author: Security Team
     Version: 1.0
 #>
-function Test-SecurityFeature {
+function Test-Template {
     [CmdletBinding()]
     param(
         [Parameter()]
-        [string]$OutputPath,
+        [string]$OutputPath = ".\results",
         
         [Parameter()]
         [switch]$PrettyOutput,
@@ -57,58 +57,51 @@ function Test-SecurityFeature {
         [switch]$CollectEvidence,
         
         [Parameter()]
-        [hashtable]$CustomComparators
+        [hashtable]$CustomComparators = @{}
     )
-
+    
     # Initialize test result
-    $result = Initialize-TestResult -TestName "Test-SecurityFeature" -Category "Category" -Description "Description of the security feature being tested"
-
+    $testResult = Initialize-TestResult -TestName "Template Test" `
+                                      -Category "Security" `
+                                      -Description "Template test module" `
+                                      -RiskLevel "Info"
+    
     try {
-        # Test implementation goes here
+        Write-Log -Message "Starting template test" -Level 'Info'
+        
+        # Add your test logic here
         # Example:
-        # $featureStatus = Get-SecurityFeatureStatus
-        # if ($featureStatus.Enabled) {
-        #     Add-Finding -TestResult $result -FindingName "Feature Status" -Status "Pass" -Description "Security feature is enabled" -RiskLevel "Info"
-        # } else {
-        #     Add-Finding -TestResult $result -FindingName "Feature Status" -Status "Warning" -Description "Security feature is disabled" -RiskLevel "Medium"
-        # }
-
-        # Example of collecting evidence
-        # if ($CollectEvidence) {
-        #     $evidence = @{
-        #         Status = $featureStatus.Enabled
-        #         LastModified = $featureStatus.LastModified
-        #         Configuration = $featureStatus.Configuration
+        # $testResult = Add-Finding -TestResult $testResult `
+        #     -FindingName "Example Check" `
+        #     -Status "Info" `
+        #     -RiskLevel "Info" `
+        #     -Description "Example finding description" `
+        #     -TechnicalDetails @{
+        #         Key = "Value"
         #     }
-        #     Add-Evidence -TestResult $result -Evidence $evidence
-        # }
-
-        # Example of comparing with baseline
-        # if ($BaselinePath -and (Test-Path $BaselinePath)) {
-        #     $baseline = Get-Content $BaselinePath | ConvertFrom-Json
-        #     $comparison = Compare-BaselineData -CurrentData $featureStatus -BaselineData $baseline -CustomComparators $CustomComparators
-        #     if ($comparison.Differences.Count -gt 0) {
-        #         Add-Finding -TestResult $result -FindingName "Baseline Comparison" -Status "Warning" -Description "Differences found compared to baseline" -RiskLevel "Medium" -AdditionalInfo @{
-        #             Differences = $comparison.Differences
-        #         }
-        #     }
-        # }
-
-        # Export results if OutputPath is specified
+        
+        # Export results if output path is specified
         if ($OutputPath) {
-            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
+            Export-TestResult -TestResult $testResult -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
         }
-
-        return $result
+        
+        return $testResult
     }
     catch {
-        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" -Description "Error during test execution: $_" -RiskLevel "High"
-        if ($OutputPath) {
-            Export-TestResult -TestResult $result -OutputPath $OutputPath -PrettyOutput:$PrettyOutput
-        }
-        return $result
+        Write-Log -Message "Error during template test: $_" -Level 'Error'
+        Add-Finding -TestResult $testResult `
+            -FindingName "Test Error" `
+            -Status "Error" `
+            -RiskLevel "High" `
+            -Description "Error during template test: $_" `
+            -TechnicalDetails @{
+                ErrorMessage = $_.Exception.Message
+                ErrorType = $_.Exception.GetType().FullName
+                StackTrace = $_.ScriptStackTrace
+            }
+        return $testResult
     }
 }
 
 # Export the function
-Export-ModuleMember -Function Test-SecurityFeature 
+Export-ModuleMember -Function Test-Template 

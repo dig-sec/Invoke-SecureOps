@@ -1,198 +1,203 @@
 # -----------------------------------------------------------------------------
-# Dependencies Analysis Module
+# Test Dependencies Module
 # -----------------------------------------------------------------------------
 
-<#
-.SYNOPSIS
-    Tests for required dependencies and their versions.
-
-.DESCRIPTION
-    This function analyzes the system for required dependencies and their versions,
-    ensuring that all necessary components are available and up-to-date.
-
-.PARAMETER OutputPath
-    The path where the test results will be exported.
-
-.PARAMETER PrettyOutput
-    Switch parameter to format the output JSON with indentation.
-
-.PARAMETER DetailedAnalysis
-    Switch parameter to perform a more detailed analysis of dependencies.
-
-.PARAMETER BaselinePath
-    Path to a baseline file for comparison.
-
-.PARAMETER CollectEvidence
-    Switch parameter to collect evidence for findings.
-
-.PARAMETER CustomComparators
-    Hashtable of custom comparison functions.
-
-.OUTPUTS
-    [hashtable] A hashtable containing test results and findings.
-
-.EXAMPLE
-    Test-Dependencies -OutputPath ".\results.json" -PrettyOutput
-
-.NOTES
-    Author: Security Team
-    Version: 1.0
-#>
 function Test-Dependencies {
     [CmdletBinding()]
     param(
         [Parameter()]
-        [string]$OutputPath,
+        [string[]]$RequiredModules = @(),
         
         [Parameter()]
-        [switch]$PrettyOutput,
+        [string[]]$RequiredCommands = @(),
         
         [Parameter()]
-        [switch]$DetailedAnalysis,
+        [string[]]$RequiredServices = @(),
         
         [Parameter()]
-        [string]$BaselinePath,
+        [hashtable]$RequiredRegistryKeys = @{},
         
         [Parameter()]
-        [switch]$CollectEvidence,
+        [hashtable]$RequiredFiles = @{},
         
         [Parameter()]
-        [hashtable]$CustomComparators
+        [switch]$AutoInstall,
+        
+        [Parameter()]
+        [switch]$SkipChecks
     )
-
-    # Initialize test result
-    $result = Initialize-JsonOutput -Category "Core" -RiskLevel "Info"
-    $result.TestName = "Test-Dependencies"
-    $result.Description = "Analyzes system dependencies and their versions"
-
+    
+    $testResult = Initialize-TestResult -TestName "Dependencies Check" `
+                                      -Category "System" `
+                                      -Description "Checks for required dependencies" `
+                                      -RiskLevel "Info"
+    
     try {
-        # Define required dependencies
-        $requiredDependencies = @(
-            @{
-                Name = "PowerShell"
-                MinVersion = "5.1"
-                CheckScript = { $PSVersionTable.PSVersion.Major -ge 5 -and $PSVersionTable.PSVersion.Minor -ge 1 }
-                GetVersion = { "$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)" }
-            },
-            @{
-                Name = "Windows Management Framework"
-                MinVersion = "5.1"
-                CheckScript = { $PSVersionTable.PSVersion.Major -ge 5 -and $PSVersionTable.PSVersion.Minor -ge 1 }
-                GetVersion = { "$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)" }
-            },
-            @{
-                Name = ".NET Framework"
-                MinVersion = "4.7.2"
-                CheckScript = { 
-                    $dotNetVersions = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP" -Recurse |
-                        Get-ItemProperty -Name Version -ErrorAction SilentlyContinue |
-                        Where-Object { $_.PSChildName -match "^(?!S)\p{L}*\d" } |
-                        Select-Object -ExpandProperty Version
-                    ($dotNetVersions | ForEach-Object {
-                        $version = [version]$_
-                        $version.Major -ge 4 -and $version.Minor -ge 7 -and $version.Build -ge 2
-                    } | Where-Object { $_ -eq $true } | Measure-Object).Count -gt 0
-                }
-                GetVersion = { 
-                    $dotNetVersions = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP" -Recurse |
-                        Get-ItemProperty -Name Version -ErrorAction SilentlyContinue |
-                        Where-Object { $_.PSChildName -match "^(?!S)\p{L}*\d" } |
-                        Select-Object -ExpandProperty Version
-                    $dotNetVersions | Sort-Object -Descending | Select-Object -First 1
+        Write-Log -Message "Checking test dependencies" -Level 'Info'
+        
+        # Check PowerShell modules
+        foreach ($module in $RequiredModules) {
+            $moduleInfo = Get-Module -ListAvailable -Name $module
+            if (-not $moduleInfo) {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Missing Module: $module" `
+                    -Status "Warning" `
+                    -RiskLevel "Medium" `
+                    -Description "Required PowerShell module '$module' is not installed" `
+                    -TechnicalDetails @{
+                        ModuleName = $module
+                        AutoInstall = $AutoInstall
+                    }
+                
+                if ($AutoInstall) {
+                    try {
+                        Install-Module -Name $module -Force -Scope CurrentUser
+                        Write-Log -Message "Installed module: $module" -Level 'Info'
+                    }
+                    catch {
+                        Write-Log -Message "Failed to install module $module`: $_" -Level 'Error'
+                    }
                 }
             }
-        )
-
-        # Check each dependency
-        foreach ($dependency in $requiredDependencies) {
-            $isInstalled = & $dependency.CheckScript
-            $version = & $dependency.GetVersion
-            
-            if ($isInstalled) {
-                Add-Finding -TestResult $result -FindingName "Dependency: $($dependency.Name)" -Status "Pass" `
-                    -Description "$($dependency.Name) version $version is installed" -RiskLevel "Info" `
-                    -AdditionalInfo @{
-                        Component = "Dependencies"
-                        Dependency = $dependency.Name
-                        Version = $version
-                        MinVersion = $dependency.MinVersion
-                    }
-            } else {
-                Add-Finding -TestResult $result -FindingName "Dependency: $($dependency.Name)" -Status "Warning" `
-                    -Description "$($dependency.Name) version $($dependency.MinVersion) or higher is required" -RiskLevel "Medium" `
-                    -AdditionalInfo @{
-                        Component = "Dependencies"
-                        Dependency = $dependency.Name
-                        CurrentVersion = $version
-                        MinVersion = $dependency.MinVersion
-                        Recommendation = "Install or upgrade $($dependency.Name) to version $($dependency.MinVersion) or higher"
+            else {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Module Check: $module" `
+                    -Status "Pass" `
+                    -RiskLevel "Info" `
+                    -Description "Required PowerShell module '$module' is installed" `
+                    -TechnicalDetails @{
+                        ModuleName = $module
+                        Version = $moduleInfo.Version
                     }
             }
         }
-
-        # Check for optional dependencies
-        $optionalDependencies = @(
-            @{
-                Name = "Windows Defender"
-                CheckScript = { Get-MpComputerStatus -ErrorAction SilentlyContinue }
-                GetVersion = { (Get-MpComputerStatus -ErrorAction SilentlyContinue).AntivirusSignatureAge }
-            },
-            @{
-                Name = "Windows Firewall"
-                CheckScript = { Get-NetFirewallProfile -ErrorAction SilentlyContinue }
-                GetVersion = { "N/A" }
-            }
-        )
-
-        foreach ($dependency in $optionalDependencies) {
-            $isInstalled = & $dependency.CheckScript
-            $version = & $dependency.GetVersion
-            
-            if ($isInstalled) {
-                Add-Finding -TestResult $result -FindingName "Optional Dependency: $($dependency.Name)" -Status "Info" `
-                    -Description "$($dependency.Name) is available" -RiskLevel "Info" `
-                    -AdditionalInfo @{
-                        Component = "Dependencies"
-                        Dependency = $dependency.Name
-                        Version = $version
-                        Type = "Optional"
+        
+        # Check PowerShell commands
+        foreach ($command in $RequiredCommands) {
+            $cmdInfo = Get-Command -Name $command -ErrorAction SilentlyContinue
+            if (-not $cmdInfo) {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Missing Command: $command" `
+                    -Status "Warning" `
+                    -RiskLevel "Medium" `
+                    -Description "Required PowerShell command '$command' is not available" `
+                    -TechnicalDetails @{
+                        CommandName = $command
                     }
-            } else {
-                Add-Finding -TestResult $result -FindingName "Optional Dependency: $($dependency.Name)" -Status "Info" `
-                    -Description "$($dependency.Name) is not available" -RiskLevel "Low" `
-                    -AdditionalInfo @{
-                        Component = "Dependencies"
-                        Dependency = $dependency.Name
-                        Type = "Optional"
-                        Recommendation = "Consider installing $($dependency.Name) for enhanced security"
+            }
+            else {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Command Check: $command" `
+                    -Status "Pass" `
+                    -RiskLevel "Info" `
+                    -Description "Required PowerShell command '$command' is available" `
+                    -TechnicalDetails @{
+                        CommandName = $command
+                        Source = $cmdInfo.Source
                     }
             }
         }
-
-        # Export results if OutputPath is specified
-        if ($OutputPath) {
-            $json = $result | ConvertTo-Json -Depth 10
-            if ($PrettyOutput) {
-                $json = $json | ConvertFrom-Json | ConvertTo-Json -Depth 10
+        
+        # Check Windows services
+        foreach ($service in $RequiredServices) {
+            $svcInfo = Get-Service -Name $service -ErrorAction SilentlyContinue
+            if (-not $svcInfo) {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Missing Service: $service" `
+                    -Status "Warning" `
+                    -RiskLevel "Medium" `
+                    -Description "Required Windows service '$service' is not installed" `
+                    -TechnicalDetails @{
+                        ServiceName = $service
+                    }
             }
-            $json | Out-File -FilePath $OutputPath -Encoding UTF8 -NoNewline
-            Write-Host "Test result exported to $OutputPath"
+            else {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Service Check: $service" `
+                    -Status "Pass" `
+                    -RiskLevel "Info" `
+                    -Description "Required Windows service '$service' is installed" `
+                    -TechnicalDetails @{
+                        ServiceName = $service
+                        Status = $svcInfo.Status
+                        StartType = $svcInfo.StartType
+                    }
+            }
         }
-
-        return $result
+        
+        # Check registry keys
+        foreach ($key in $RequiredRegistryKeys.Keys) {
+            $keyExists = Test-Path -Path $key
+            if (-not $keyExists) {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Missing Registry Key: $key" `
+                    -Status "Warning" `
+                    -RiskLevel "Medium" `
+                    -Description "Required registry key '$key' does not exist" `
+                    -TechnicalDetails @{
+                        RegistryKey = $key
+                        ExpectedValue = $RequiredRegistryKeys[$key]
+                    }
+            }
+            else {
+                $keyValue = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Registry Key Check: $key" `
+                    -Status "Pass" `
+                    -RiskLevel "Info" `
+                    -Description "Required registry key '$key' exists" `
+                    -TechnicalDetails @{
+                        RegistryKey = $key
+                        CurrentValue = $keyValue
+                        ExpectedValue = $RequiredRegistryKeys[$key]
+                    }
+            }
+        }
+        
+        # Check files
+        foreach ($file in $RequiredFiles.Keys) {
+            $fileExists = Test-Path -Path $file
+            if (-not $fileExists) {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Missing File: $file" `
+                    -Status "Warning" `
+                    -RiskLevel "Medium" `
+                    -Description "Required file '$file' does not exist" `
+                    -TechnicalDetails @{
+                        FilePath = $file
+                        ExpectedHash = $RequiredFiles[$file]
+                    }
+            }
+            else {
+                $fileHash = Get-FileHash -Path $file -ErrorAction SilentlyContinue
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "File Check: $file" `
+                    -Status "Pass" `
+                    -RiskLevel "Info" `
+                    -Description "Required file '$file' exists" `
+                    -TechnicalDetails @{
+                        FilePath = $file
+                        CurrentHash = $fileHash.Hash
+                        ExpectedHash = $RequiredFiles[$file]
+                    }
+            }
+        }
+        
+        return $testResult
     }
     catch {
-        Add-Finding -TestResult $result -FindingName "Test Error" -Status "Error" `
-            -Description "Error during dependencies analysis: $_" -RiskLevel "High"
-        if ($OutputPath) {
-            $json = $result | ConvertTo-Json -Depth 10
-            if ($PrettyOutput) {
-                $json = $json | ConvertFrom-Json | ConvertTo-Json -Depth 10
+        Write-Log -Message "Error checking dependencies: $_" -Level 'Error'
+        Add-Finding -TestResult $testResult `
+            -FindingName "Dependencies Error" `
+            -Status "Error" `
+            -RiskLevel "High" `
+            -Description "Error checking dependencies: $_" `
+            -TechnicalDetails @{
+                ErrorMessage = $_.Exception.Message
+                ErrorType = $_.Exception.GetType().FullName
+                StackTrace = $_.ScriptStackTrace
             }
-            $json | Out-File -FilePath $OutputPath -Encoding UTF8 -NoNewline
-            Write-Host "Test result exported to $OutputPath"
-        }
-        return $result
+        return $testResult
     }
 }
 

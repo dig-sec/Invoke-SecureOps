@@ -1,73 +1,91 @@
 # -----------------------------------------------------------------------------
-# Windows Firewall Status Check
+# Firewall Status Analysis Module
 # -----------------------------------------------------------------------------
 
 function Test-FirewallStatus {
-    Write-SectionHeader "Windows Firewall Status Check"
-    Write-Output "Checking Windows Firewall status..."
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]$OutputPath,
+        
+        [Parameter()]
+        [switch]$PrettyOutput,
+        
+        [Parameter()]
+        [string]$BaselinePath,
+        
+        [Parameter()]
+        [switch]$CollectEvidence
+    )
 
+    Write-SectionHeader "Firewall Status Check"
+    Write-Output "Analyzing firewall status..."
+
+    # Initialize test result using helper function
+    $testResult = Initialize-TestResult -TestName "Test-FirewallStatus" -Category "Firewall" -Description "Windows Firewall status check" -RiskLevel "High"
+    
     try {
         # Get firewall profiles
         $firewallProfiles = Get-NetFirewallProfile -ErrorAction Stop
-
+        
         foreach ($profile in $firewallProfiles) {
             $profileName = $profile.Name
             $enabled = $profile.Enabled
             $defaultInboundAction = $profile.DefaultInboundAction
             $defaultOutboundAction = $profile.DefaultOutboundAction
-            $logAllowed = $profile.LogAllowed
-            $logBlocked = $profile.LogBlocked
-            $logFileName = $profile.LogFileName
-            $logMaxSizeKilobytes = $profile.LogMaxSizeKilobytes
-
-            # Check if firewall is enabled
-            if ($enabled) {
-                Add-Finding -CheckName "Firewall $profileName" -Status "Pass" -Details "Firewall is enabled for $profileName profile"
-            } else {
-                Add-Finding -CheckName "Firewall $profileName" -Status "Fail" -Details "Firewall is disabled for $profileName profile"
+            
+            if (-not $enabled) {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Firewall Profile Status - $profileName" `
+                    -Status "Warning" `
+                    -Description "Firewall profile '$profileName' is disabled" `
+                    -RiskLevel "High" `
+                    -TechnicalDetails @{
+                        Profile = $profileName
+                        Enabled = $enabled
+                        DefaultInboundAction = $defaultInboundAction
+                        DefaultOutboundAction = $defaultOutboundAction
+                    }
             }
-
-            # Check default inbound action
-            if ($defaultInboundAction -eq "Block") {
-                Add-Finding -CheckName "Firewall $profileName Inbound" -Status "Pass" -Details "Default inbound action is set to Block"
-            } else {
-                Add-Finding -CheckName "Firewall $profileName Inbound" -Status "Warning" -Details "Default inbound action is set to $defaultInboundAction"
+            elseif ($defaultInboundAction -eq "Allow") {
+                $testResult = Add-Finding -TestResult $testResult `
+                    -FindingName "Firewall Default Inbound Action - $profileName" `
+                    -Status "Warning" `
+                    -Description "Firewall profile '$profileName' has default inbound action set to Allow" `
+                    -RiskLevel "Medium" `
+                    -TechnicalDetails @{
+                        Profile = $profileName
+                        Enabled = $enabled
+                        DefaultInboundAction = $defaultInboundAction
+                        DefaultOutboundAction = $defaultOutboundAction
+                    }
             }
-
-            # Check default outbound action
-            if ($defaultOutboundAction -eq "Allow") {
-                Add-Finding -CheckName "Firewall $profileName Outbound" -Status "Pass" -Details "Default outbound action is set to Allow"
-            } else {
-                Add-Finding -CheckName "Firewall $profileName Outbound" -Status "Warning" -Details "Default outbound action is set to $defaultOutboundAction"
-            }
-
-            # Check logging settings
-            if ($logAllowed -and $logBlocked) {
-                Add-Finding -CheckName "Firewall $profileName Logging" -Status "Pass" -Details "Logging is enabled for both allowed and blocked connections"
-            } elseif ($logAllowed) {
-                Add-Finding -CheckName "Firewall $profileName Logging" -Status "Warning" -Details "Logging is enabled only for allowed connections"
-            } elseif ($logBlocked) {
-                Add-Finding -CheckName "Firewall $profileName Logging" -Status "Warning" -Details "Logging is enabled only for blocked connections"
-            } else {
-                Add-Finding -CheckName "Firewall $profileName Logging" -Status "Fail" -Details "Logging is disabled"
-            }
-
-            # Check log file settings
-            if ($logFileName -and $logMaxSizeKilobytes -gt 0) {
-                Add-Finding -CheckName "Firewall $profileName Log File" -Status "Info" -Details "Log file: $logFileName (Max size: $logMaxSizeKilobytes KB)"
+            
+            if ($CollectEvidence) {
+                $testResult = Add-Evidence -TestResult $testResult `
+                    -FindingName "Firewall Profile Evidence - $profileName" `
+                    -EvidenceType "Configuration" `
+                    -EvidenceData $profile `
+                    -Description "Firewall profile configuration for $profileName"
             }
         }
-
-        # Check for any active firewall rules
-        $activeRules = Get-NetFirewallRule -Enabled True -ErrorAction SilentlyContinue
-        if ($activeRules) {
-            Add-Finding -CheckName "Active Firewall Rules" -Status "Info" -Details "Found $($activeRules.Count) active firewall rules"
-        }
+        
+        return $testResult
     }
     catch {
         Write-Error "Error checking firewall status: $_"
-        Add-Finding -CheckName "Windows Firewall" -Status "Error" -Details "Failed to check firewall status: $_"
+        $testResult = Add-Finding -TestResult $testResult `
+            -FindingName "Test Error" `
+            -Status "Error" `
+            -RiskLevel "High" `
+            -Description "Error occurred during firewall status check" `
+            -TechnicalDetails @{
+                Error = $_.Exception.Message
+                StackTrace = $_.ScriptStackTrace
+            }
+        return $testResult
     }
 }
 
+# Export the function
 Export-ModuleMember -Function Test-FirewallStatus 

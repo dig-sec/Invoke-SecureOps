@@ -195,7 +195,4 @@ function Test-AMSIBypass {
             }
         return $result
     }
-}
-
-# Export the function
-Export-ModuleMember -Function Test-AMSIBypass 
+} 
