@@ -3,8 +3,13 @@
 # -----------------------------------------------------------------------------
 
 function Test-DirectoryPermissions {
+    [CmdletBinding()]
     param (
-        [string]$OutputPath = ".\directory_permissions.json"
+        [Parameter()]
+        [string]$OutputPath = ".\directory_permissions.json",
+        
+        [Parameter()]
+        [switch]$PrettyOutput
     )
 
     Write-SectionHeader "Directory Permissions Check"
