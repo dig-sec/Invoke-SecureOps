@@ -12,9 +12,6 @@ function Test-DefenderStatus {
         [switch]$PrettyOutput,
         
         [Parameter()]
-        [switch]$Verbose,
-        
-        [Parameter()]
         [string]$BaselinePath,
         
         [Parameter()]
